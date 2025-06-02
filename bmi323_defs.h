@@ -1,5 +1,5 @@
 /**
-* Copyright (c) 2023 Bosch Sensortec GmbH. All rights reserved.
+ * Copyright (c) 2025 Bosch Sensortec GmbH. All rights reserved.
 *
 * BSD-3-Clause
 *
@@ -31,8 +31,8 @@
 * POSSIBILITY OF SUCH DAMAGE.
 *
 * @file       bmi323_defs.h
-* @date       2023-02-17
-* @version    v2.1.0
+* @date       2024-09-17
+* @version    v2.4.0
 *
 */
  #ifndef _BMI323_DEFS_H
@@ -164,6 +164,12 @@
 #define BMI323_ALT_ACCEL                        BMI3_ALT_ACCEL
 #define BMI323_ALT_GYRO                         BMI3_ALT_GYRO
 #define BMI323_ALT_AUTO_CONFIG                  BMI3_ALT_AUTO_CONFIG
+
+/*! Non virtual sensor features */
+#define BMI323_TEMP                             BMI3_TEMP
+#define BMI323_I3C_SYNC_ACCEL                   BMI3_I3C_SYNC_ACCEL
+#define BMI323_I3C_SYNC_GYRO                    BMI3_I3C_SYNC_GYRO
+#define BMI323_I3C_SYNC_TEMP                    BMI3_I3C_SYNC_TEMP
 
 /*! Maximum number of features in bmi323 */
 #define BMI323_MAX_FEATURE                      UINT8_C(6)

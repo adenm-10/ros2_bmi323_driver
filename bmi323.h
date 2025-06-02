@@ -1,5 +1,5 @@
 /**
-* Copyright (c) 2023 Bosch Sensortec GmbH. All rights reserved.
+ * Copyright (c) 2025 Bosch Sensortec GmbH. All rights reserved.
 *
 * BSD-3-Clause
 *
@@ -31,8 +31,8 @@
 * POSSIBILITY OF SUCH DAMAGE.
 *
 * @file       bmi323.h
-* @date       2023-02-17
-* @version    v2.1.0
+* @date       2024-10-17
+* @version    v2.4.0
 *
 */
 
@@ -469,26 +469,6 @@ int8_t bmi323_get_error_status(struct bmi3_err_reg *err_reg, struct bmi3_dev *de
  *
  * @note Sensors/features that can be enabled.
  *
- *@verbatim
- *    sens_list             |  Values
- * -------------------------|-----------
- * BMI323_ACCEL             |  0
- * BMI323_GYRO              |  1
- * BMI323_SIG_MOTION        |  2
- * BMI323_ANY_MOTION        |  3
- * BMI323_NO_MOTION         |  4
- * BMI323_STEP_DETECTOR     |  5
- * BMI323_STEP_COUNTER      |  6
- * BMI323_TILT              |  7
- * BMI323_ORIENTATION       |  8
- * BMI323_FLAT              |  9
- * BMI323_WAKEUP            |  10
- * BMI323_I3C_SYC           |  11
- * BMI323_GYRO_GAIN_UPDATE  |  12
- * BMI323_TEMP              |  16
- * BMI323_GYRO_SELF_OFF     |  18
- *@endverbatim
- *
  *  @return Result of API execution status
  *
  *  @retval 0 -> Success
@@ -524,19 +504,14 @@ int8_t bmi323_select_sensor(struct bmi3_feature_enable *enable, struct bmi3_dev 
  * BMI323_SIG_MOTION             |  2
  * BMI323_ANY_MOTION             |  3
  * BMI323_NO_MOTION              |  4
- * BMI323_STEP_DETECTOR          |  5
  * BMI323_STEP_COUNTER           |  6
  * BMI323_TILT                   |  7
  * BMI323_ORIENTATION            |  8
  * BMI323_FLAT                   |  9
- * BMI323_WAKEUP                 |  10
- * BMI323_I3C_SYC                |  11
- * BMI323_GYRO_GAIN_UPDATE       |  12
+ * BMI323_TAP                    |  10
  * BMI323_ALT_ACCEL              |  13
  * BMI323_ALT_GYRO               |  14
  * BMI323_ALT_AUTO_CONFIG        |  15
- * BMI323_TEMP                   |  16
- * BMI323_GYRO_SELF_OFF          |  18
  *@endverbatim
  *
  *  @return Result of API execution status
@@ -568,19 +543,14 @@ int8_t bmi323_set_sensor_config(struct bmi3_sens_config *sens_cfg, uint8_t n_sen
  * BMI323_SIG_MOTION             |  2
  * BMI323_ANY_MOTION             |  3
  * BMI323_NO_MOTION              |  4
- * BMI323_STEP_DETECTOR          |  5
  * BMI323_STEP_COUNTER           |  6
  * BMI323_TILT                   |  7
  * BMI323_ORIENTATION            |  8
  * BMI323_FLAT                   |  9
- * BMI323_WAKEUP                 |  10
- * BMI323_I3C_SYC                |  11
- * BMI323_GYRO_GAIN_UPDATE       |  12
+ * BMI323_TAP                    |  10
  * BMI323_ALT_ACCEL              |  13
  * BMI323_ALT_GYRO               |  14
  * BMI323_ALT_AUTO_CONFIG        |  15
- * BMI323_TEMP                   |  16
- * BMI323_GYRO_SELF_OFF          |  18
  *@endverbatim
  *
  *  @return Result of API execution status
@@ -617,11 +587,12 @@ int8_t bmi323_get_sensor_config(struct bmi3_sens_config *sens_cfg, uint8_t n_sen
  * ---------------------------|-----------
  * BMI323_ACCEL               |   0
  * BMI323_GYRO                |   1
- * BMI323_STEP_COUNTER        |   6
- * BMI323_ORIENTATION         |   8
- * BMI323_WAKEUP              |   10
- * BMI323_GYRO_GAIN_UPDATE    |   12
- * BMI323_GYRO_CROSS_SENSE    |   21
+ * BMI323_STEP_COUNTER        |   5
+ * BMI323_ORIENTATION         |   7
+ * BMI323_TEMP                |   13
+ * BMI323_I3C_SYNC_ACCEL      |   14
+ * BMI323_I3C_SYNC_GYRO       |   15
+ * BMI323_I3C_SYNC_TEMP       |   16
  *@endverbatim
  *
  *  @return Result of API execution status
@@ -643,27 +614,6 @@ int8_t bmi323_get_sensor_data(struct bmi3_sensor_data *sensor_data, uint8_t n_se
  * @param[in] dev          : Structure instance of bmi3_dev.
  *
  *  @return Result of API execution status
- *
- *@verbatim
- * feature_int             |  Mask values
- * ------------------------|---------------------
- * BMI3_NO_MOTION_OUT      |  0x0003
- * BMI3_ANY_MOTION_OUT     |  0x000C
- * BMI3_FLAT_OUT           |  0x0030
- * BMI3_ORIENTATION_OUT    |  0x00C0
- * BMI3_STEP_DETECTOR_OUT  |  0x0300
- * BMI3_STEP_COUNTER_OUT   |  0x0C00
- * BMI3_SIG_MOTION_OUT     |  0x3000
- * BMI3_TILT_OUT           |  0xC000
- * BMI3_TAP_OUT            |  0x0003
- * BMI3_I3C_OUT            |  0x000C
- * BMI3_ERR_STATUS         |  0x0030
- * BMI3_TEMP_DRDY_INT      |  0x00C0
- * BMI3_GYR_DRDY_INT       |  0x0300
- * BMI3_ACC_DRDY_INT       |  0xC000
- * BMI3_FWM_INT            |  0x3000
- * BMI3_FFULL_INT          |  0xC000
- *@endverbatim
  *
  *  @retval 0 -> Success
  *  @retval < 0 -> Fail
@@ -731,34 +681,6 @@ int8_t bmi323_set_command_register(uint16_t command, struct bmi3_dev *dev);
  *  @retval < 0 -> Fail
  */
 int8_t bmi323_get_sensor_time(uint32_t *sensor_time, struct bmi3_dev *dev);
-
-/**
- * \ingroup bmi323
- * \defgroup bmi323ApiTemperature Temperature
- * @brief Read temperature of the sensor.
- */
-
-/*!
- * \ingroup bmi323ApiTemperature
- * \page bmi323_api_bmi323_get_temperature_data bmi323_get_temperature_data
- * \code
- * int8_t bmi323_get_temperature_data(uint16_t *temp_data, struct bmi3_dev *dev);
- * \endcode
- * @details This API reads the raw temperature data from the register and can be
- * converted into degree celsius using the below formula.
- * Formula: temperature_value = (float)(((float)((int16_t)temperature_data)) / 512.0) + 23.0
- *
- * @note Enable accel or gyro to read temperature
- *
- * @param[out] temp_data : Pointer variable which stores the raw temperature value.
- * @param[in] dev   : Structure instance of bmi3_dev.
- *
- *
- *  @return Result of API execution status
- *  @retval 0 -> Success
- *  @retval < 0 -> Fail
- */
-int8_t bmi323_get_temperature_data(uint16_t *temp_data, struct bmi3_dev *dev);
 
 /**
  * \ingroup bmi323
@@ -1712,5 +1634,9 @@ int8_t bmi323_get_acc_gyr_off_gain_reset(uint8_t *acc_off_gain_reset, uint8_t *g
  *  @retval < 0 -> Fail
  */
 int8_t bmi323_set_acc_gyr_off_gain_reset(uint8_t acc_off_gain_reset, uint8_t gyr_off_gain_reset, struct bmi3_dev *dev);
+
+#ifdef __cplusplus
+}
+#endif /* End of CPP guard */
 
 #endif /* End of _BMI323_H */

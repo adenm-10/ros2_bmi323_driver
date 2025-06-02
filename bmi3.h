@@ -1,5 +1,5 @@
 /**
-* Copyright (c) 2023 Bosch Sensortec GmbH. All rights reserved.
+ * Copyright (c) 2025 Bosch Sensortec GmbH. All rights reserved.
 *
 * BSD-3-Clause
 *
@@ -31,8 +31,8 @@
 * POSSIBILITY OF SUCH DAMAGE.
 *
 * @file       bmi3.h
-* @date       2023-02-17
-* @version    v2.1.0
+* @date       2024-09-17
+* @version    v2.4.0
 *
 */
 
@@ -530,7 +530,7 @@ int8_t bmi3_get_sensor_config(struct bmi3_sens_config *sens_cfg, uint8_t n_sens,
  * \code
  * int8_t bmi3_get_sensor_data(struct bmi3_sensor_data *sensor_data, uint8_t n_sens, struct bmi3_dev *dev);
  * \endcode
- * details This API gets the sensor/feature data for accelerometer, gyroscope,
+ * @details This API gets the sensor/feature data for accelerometer, gyroscope,
  * step counter, orientation, i3c sync accel, i3c sync gyro and i3c sync temperature.
  *
  * @param[out] sensor_data   : Structure instance of bmi3_sensor_data.
@@ -546,6 +546,7 @@ int8_t bmi3_get_sensor_config(struct bmi3_sens_config *sens_cfg, uint8_t n_sens,
  * BMI3_GYRO                |   1
  * BMI3_STEP_COUNTER        |   5
  * BMI3_ORIENTATION         |   7
+ * BMI3_TEMP                |   13
  * BMI3_I3C_SYNC_ACCEL      |   14
  * BMI3_I3C_SYNC_GYRO       |   15
  * BMI3_I3C_SYNC_TEMP       |   16
@@ -557,6 +558,27 @@ int8_t bmi3_get_sensor_config(struct bmi3_sens_config *sens_cfg, uint8_t n_sens,
  *  @retval < 0 -> Fail
  */
 int8_t bmi3_get_sensor_data(struct bmi3_sensor_data *sensor_data, uint8_t n_sens, struct bmi3_dev *dev);
+
+/*!
+ * \ingroup bmi3ApiSensorD
+ * \page bmi3_api_bmi3_read_reg_data bmi3_read_reg_data
+ * \code
+ * int8_t bmi3_read_reg_data(uint8_t *reg_data, struct bmi3_dev *dev);
+ * \endcode
+ * @details This API gets the sensor data such as accel, gyro, temperature, sensor time, saturation flags
+ * and interrupt status
+ *
+ * @param[out] reg_data      : Pointer variable to store register data
+ * @param[in]  dev           : Structure instance of bmi3_dev.
+ *
+ * @note Sensors/features whose data can be read
+ *
+ *  @return Result of API execution status
+ *
+ *  @retval 0 -> Success
+ *  @retval < 0 -> Fail
+ */
+int8_t bmi3_read_reg_data(uint8_t *reg_data, struct bmi3_dev *dev);
 
 /*!
  * \ingroup bmi3ApiInt
@@ -1640,5 +1662,9 @@ int8_t bmi3_get_acc_gyr_off_gain_reset(uint8_t *acc_off_gain_reset, uint8_t *gyr
  *  @retval < 0 -> Fail
  */
 int8_t bmi3_set_acc_gyr_off_gain_reset(uint8_t acc_off_gain_reset, uint8_t gyr_off_gain_reset, struct bmi3_dev *dev);
+
+#ifdef __cplusplus
+}
+#endif /* End of CPP guard */
 
 #endif /* End of _BMI3_H */

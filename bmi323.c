@@ -1,5 +1,5 @@
 /**
-* Copyright (c) 2023 Bosch Sensortec GmbH. All rights reserved.
+ * Copyright (c) 2025 Bosch Sensortec GmbH. All rights reserved.
 *
 * BSD-3-Clause
 *
@@ -31,8 +31,8 @@
 * POSSIBILITY OF SUCH DAMAGE.
 *
 * @file       bmi323.c
-* @date       2023-02-17
-* @version    v2.1.0
+* @date       2024-09-17
+* @version    v2.4.0
 *
 */
 
@@ -408,20 +408,6 @@ int8_t bmi323_get_sensor_time(uint32_t *sensor_time, struct bmi3_dev *dev)
 }
 
 /*!
- * @brief This API reads the raw temperature data from the register and can be
- * converted into degree celsius.
- */
-int8_t bmi323_get_temperature_data(uint16_t *temp_data, struct bmi3_dev *dev)
-{
-    /* Variable to define error */
-    int8_t rslt;
-
-    rslt = bmi3_get_temperature_data(temp_data, dev);
-
-    return rslt;
-}
-
-/*!
  * @brief This API reads the FIFO data.
  */
 int8_t bmi323_read_fifo_data(struct bmi3_fifo_frame *fifo, struct bmi3_dev *dev)
@@ -619,7 +605,6 @@ int8_t bmi323_context_switch_selection(uint8_t context_sel, struct bmi3_dev *dev
         sens_cfg[3].cfg.step_counter.step_duration_thres = step_counter_param_set[context_sel][index++];
         sens_cfg[3].cfg.step_counter.mean_crossing_pp_enabled = step_counter_param_set[context_sel][index++];
         sens_cfg[3].cfg.step_counter.mcr_threshold = step_counter_param_set[context_sel][index++];
-        sens_cfg[3].cfg.step_counter.sc_12_res = step_counter_param_set[context_sel][index++];
 
         /* Set significant motion configuration */
         index = 0;

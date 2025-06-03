@@ -1,5 +1,5 @@
 /**
-* Copyright (c) 2023 Bosch Sensortec GmbH. All rights reserved.
+ * Copyright (c) 2025 Bosch Sensortec GmbH. All rights reserved.
 *
 * BSD-3-Clause
 *
@@ -31,8 +31,8 @@
 * POSSIBILITY OF SUCH DAMAGE.
 *
 * @file       bmi3.c
-* @date       2023-02-17
-* @version    v2.1.0
+* @date       2024-10-17
+* @version    v2.4.0
 *
 */
 
@@ -202,11 +202,10 @@ static int8_t check_boundary_val(uint8_t *val, uint8_t min, uint8_t max, struct 
 static int8_t get_accel_config(struct bmi3_accel_config *config, struct bmi3_dev *dev);
 
 /*!
- * @brief This internal API gets the accelerometer data from the register.
+ * @brief This internal API stores the accelerometer, sensortime and accel saturation data from the register.
  *
- * @param[out] data         : Structure instance of sensor_data.
- * @param[in]  reg_addr     : Register address where data is stored.
- * @param[in]  dev          : Structure instance of bmi3_dev.
+ * @param[out] data         : Structure instance of bmi3_sens_axes_data.
+ * @param[in]  reg_data     : Variable to store the register data.
  *
  * @return Result of API execution status
  *
@@ -214,7 +213,7 @@ static int8_t get_accel_config(struct bmi3_accel_config *config, struct bmi3_dev
  * @return < 0 -> Fail
  *
  */
-static int8_t get_accel_sensor_data(struct bmi3_sens_axes_data *data, uint8_t reg_addr, struct bmi3_dev *dev);
+static int8_t get_accel_sensortime_sat_data(struct bmi3_sens_axes_data *data, const uint8_t *reg_data);
 
 /*!
  * @brief This internal API sets gyroscope configurations like ODR, gyro mode,
@@ -272,11 +271,10 @@ static int8_t validate_bw_avg_gyr_mode(uint8_t *bandwidth,
 static int8_t validate_gyr_odr_range(uint8_t *odr, uint8_t *range, struct bmi3_dev *dev);
 
 /*!
- * @brief This internal API gets the gyroscope data from the register.
+ * @brief This internal API stores the gyroscope, sensortime and gyro saturation data from the register.
  *
  * @param[out] data         : Structure instance of bmi3_sens_axes_data.
- * @param[in]  reg_addr     : Register address where data is stored.
- * @param[in]  dev          : Structure instance of bmi3_dev.
+ * @param[in]  reg_data     : Variable to store the register data.
  *
  * @return Result of API execution status
  *
@@ -284,7 +282,22 @@ static int8_t validate_gyr_odr_range(uint8_t *odr, uint8_t *range, struct bmi3_d
  * @return < 0 -> Fail
  *
  */
-static int8_t get_gyro_sensor_data(struct bmi3_sens_axes_data *data, uint8_t reg_addr, struct bmi3_dev *dev);
+static int8_t get_gyro_sensortime_sat_data(struct bmi3_sens_axes_data *data, const uint8_t *reg_data);
+
+/*!
+ * @brief This internal API reads the raw temperature data from the register and can be
+ * converted into degree celsius.
+ *
+ * @param[out] data         : Structure instance of bmi3_sens_axes_data.
+ * @param[in]  reg_data     : Variable to store the register data.
+ *
+ * @return Result of API execution status
+ *
+ * @return 0 -> Success
+ * @return < 0 -> Fail
+ *
+ */
+static int8_t get_temp_sensortime_data(struct bmi3_sens_axes_data *data, const uint8_t *reg_data);
 
 /*!
  * @brief This internal API gets the step counter data from the register.
@@ -331,30 +344,6 @@ static int8_t get_orient_output_data(struct bmi3_orientation_output *orient_out,
  *
  */
 static int8_t get_gyro_config(struct bmi3_gyro_config *config, struct bmi3_dev *dev);
-
-/*!
- * @brief This internal API gets the accelerometer data.
- *
- * @param[out] data         : Structure instance of bmi3_sens_axes_data.
- * @param[in]  reg_data     : Data stored in the register.
- *
- * @return None
- *
- * @retval None
- */
-static void get_acc_data(struct bmi3_sens_axes_data *data, const uint16_t *reg_data);
-
-/*!
- * @brief This internal API gets the gyroscope data.
- *
- * @param[out] data         : Structure instance of bmi3_sens_axes_data.
- * @param[in]  reg_data     : Data stored in the register.
- *
- * @return None
- *
- * @retval None
- */
-static void get_gyr_data(struct bmi3_sens_axes_data *data, const uint16_t *reg_data);
 
 /*!
  * @brief This internal API is used to validate the device pointer for
@@ -969,11 +958,6 @@ static int8_t set_orientation_config(const struct bmi3_orientation_config *confi
  * -------------------------|---------------------------------------------------
  *  step_counter_params     | 1 - 19 step_counter parameters for different settings.
  * -------------------------|---------------------------------------------------
- *                          | Switch between the devices.
- *                          | value 0 = Smart phone
- *  sc_12_res               | value 1 = Wrist wearable
- *                          | value 2 = Hearable
- * -------------------------|---------------------------------------------------
  * @endverbatim
  *
  * @return Result of API execution status
@@ -1002,11 +986,6 @@ static int8_t get_step_config(struct bmi3_step_counter_config *config, struct bm
  *  reset counter           | Flag to reset the counted steps.
  * -------------------------|---------------------------------------------------
  *  step_counter_params     | 1 - 19 step_counter parameters for different settings.
- * -------------------------|---------------------------------------------------
- *                          | Switch between the devices.
- *                          | value 0 = Smart phone
- *  sc_12_res               | value 1 = Wrist wearable
- *                          | value 2 = Hearable
  * -------------------------|---------------------------------------------------
  * @endverbatim
  *
@@ -1559,18 +1538,6 @@ static int8_t validate_foc_position(uint8_t sens_list,
 static int8_t validate_foc_accel_axis(int16_t avg_foc_data, struct bmi3_dev *dev);
 
 /*!
- * @brief This internal API sets configurations for performing accelerometer FOC.
- *
- * @param[in] dev       : Structure instance of bmi3_dev
- *
- * @return Result of API execution status
- *
- * @return 0 -> Success
- * @return < 0 -> Fail
- */
-static int8_t set_accel_foc_config(struct bmi3_dev *dev);
-
-/*!
  * @brief This internal API performs Fast Offset Compensation for accelerometer.
  *
  * @param[in] accel_g_value : This parameter selects the accel FOC
@@ -1663,6 +1630,8 @@ static void invert_accel_offset(struct bmi3_acc_dp_gain_offset *offset_data);
  */
 static int32_t power(int16_t base, uint8_t resolution);
 
+#ifdef BMI330
+
 /*!
  * @brief This internal API sets the individual gyroscope
  * filter coefficients in the respective dma registers.
@@ -1676,6 +1645,8 @@ static int32_t power(int16_t base, uint8_t resolution);
  *
  */
 static int8_t set_gyro_filter_coefficients(struct bmi3_dev *dev);
+
+#endif
 
 /*!
  * @brief This internal API check the data index for the fifo
@@ -2229,23 +2200,11 @@ int8_t bmi3_set_remap_axes(const struct bmi3_axes_remap remapped_axis, struct bm
     /* Structure instance of sensor config */
     struct bmi3_sens_config config = { 0 };
 
-    /* Variable to set the re-mapped axes in the sensor */
-    uint8_t axis_map;
-
-    /* Variable to set the re-mapped x-axes sign in the sensor */
-    uint8_t invert_x;
-
-    /* Variable to set the re-mapped y-axes sign in the sensor */
-    uint8_t invert_y;
-
-    /* Variable to set the re-mapped z-axes sign in the sensor */
-    uint8_t invert_z;
-
     /* Variable to define the register address */
     uint8_t base_addr[2] = { BMI3_BASE_ADDR_AXIS_REMAP, 0 };
 
     /* Array variable to get remapped axis data */
-    uint8_t remap_data[4];
+    uint8_t remap_data[4] = { 0 };
 
     /* Set the configuration to feature engine register */
     rslt = bmi3_set_regs(BMI3_REG_FEATURE_DATA_ADDR, base_addr, 2, dev);
@@ -2253,18 +2212,16 @@ int8_t bmi3_set_remap_axes(const struct bmi3_axes_remap remapped_axis, struct bm
     if (rslt == BMI3_OK)
     {
         /* Set the value of re-mapped axis */
-        axis_map = remapped_axis.axis_map & BMI3_XYZ_AXIS_MASK;
+        remap_data[0] = BMI3_SET_BIT_POS0(remap_data[0], BMI3_XYZ_AXIS, remapped_axis.axis_map);
 
         /* Set the value of re-mapped x-axis sign */
-        invert_x = ((remapped_axis.invert_x << BMI3_X_AXIS_SIGN_POS) & BMI3_X_AXIS_SIGN_MASK);
+        remap_data[0] |= BMI3_SET_BITS(remap_data[0], BMI3_X_AXIS_SIGN, remapped_axis.invert_x);
 
         /* Set the value of re-mapped y-axis sign */
-        invert_y = ((remapped_axis.invert_y << BMI3_Y_AXIS_SIGN_POS) & BMI3_Y_AXIS_SIGN_MASK);
+        remap_data[0] |= BMI3_SET_BITS(remap_data[0], BMI3_Y_AXIS_SIGN, remapped_axis.invert_y);
 
         /* Set the value of re-mapped z-axis sign */
-        invert_z = ((remapped_axis.invert_z << BMI3_Z_AXIS_SIGN_POS) & BMI3_Z_AXIS_SIGN_MASK);
-
-        remap_data[0] = (axis_map | invert_x | invert_y | invert_z);
+        remap_data[0] |= BMI3_SET_BITS(remap_data[0], BMI3_Z_AXIS_SIGN, remapped_axis.invert_z);
 
         /* Set the configuration back to the page */
         rslt = bmi3_set_regs(BMI3_REG_FEATURE_DATA_TX, remap_data, 2, dev);
@@ -2354,6 +2311,12 @@ int8_t bmi3_set_sensor_config(struct bmi3_sens_config *sens_cfg, uint8_t n_sens,
                     rslt = BMI3_E_INVALID_SENSOR;
                     break;
             }
+
+            /* Return error if any of the get sensor data fails */
+            if (rslt != BMI3_OK)
+            {
+                break;
+            }
         }
     }
     else
@@ -2440,6 +2403,12 @@ int8_t bmi3_get_sensor_config(struct bmi3_sens_config *sens_cfg, uint8_t n_sens,
                     rslt = BMI3_E_INVALID_SENSOR;
                     break;
             }
+
+            /* Return error if any of the get sensor data fails */
+            if (rslt != BMI3_OK)
+            {
+                break;
+            }
         }
     }
     else
@@ -2460,48 +2429,36 @@ int8_t bmi3_map_interrupt(struct bmi3_map_int map_int, struct bmi3_dev *dev)
 
     /* Variable to store register data */
     uint8_t reg_data[4] = { 0 };
-
-    uint16_t no_motion_out, any_motion_out, flat_out, orientation_out, step_detector_out, step_counter_out,
-             sig_motion_out, tilt_out;
-    uint16_t tap_out, i3c_out, err_status, temp, gyr, acc, fwm, ffull;
+    uint16_t temp_value = 0;
 
     /* Read interrupt map1 and map2 and register */
     rslt = bmi3_get_regs(BMI3_REG_INT_MAP1, reg_data, 4, dev);
 
     if (rslt == BMI3_OK)
     {
-        no_motion_out =
-            (BMI3_SET_BIT_POS0(reg_data[0], BMI3_NO_MOTION_OUT, map_int.no_motion_out) & BMI3_NO_MOTION_OUT_MASK);
-        any_motion_out =
-            (BMI3_SET_BITS(reg_data[0], BMI3_ANY_MOTION_OUT, map_int.any_motion_out) & BMI3_ANY_MOTION_OUT_MASK);
-        flat_out = (BMI3_SET_BITS(reg_data[0], BMI3_FLAT_OUT, map_int.flat_out) & BMI3_FLAT_OUT_MASK);
-        orientation_out =
-            (BMI3_SET_BITS(reg_data[0], BMI3_ORIENTATION_OUT, map_int.orientation_out) & BMI3_ORIENTATION_OUT_MASK);
-        step_detector_out =
-            (BMI3_SET_BITS(reg_data[1], BMI3_STEP_DETECTOR_OUT,
-                           map_int.step_detector_out) & BMI3_STEP_DETECTOR_OUT_MASK);
-        step_counter_out =
-            (BMI3_SET_BITS(reg_data[1], BMI3_STEP_COUNTER_OUT, map_int.step_counter_out) & BMI3_STEP_COUNTER_OUT_MASK);
-        sig_motion_out =
-            (BMI3_SET_BITS(reg_data[1], BMI3_SIG_MOTION_OUT, map_int.sig_motion_out) & BMI3_SIG_MOTION_OUT_MASK);
-        tilt_out = (BMI3_SET_BITS(reg_data[1], BMI3_TILT_OUT, map_int.tilt_out) & BMI3_TILT_OUT_MASK);
+        reg_data[0] = BMI3_SET_BIT_POS0(reg_data[0], BMI3_NO_MOTION_OUT, map_int.no_motion_out);
+        reg_data[0] = BMI3_SET_BITS(reg_data[0], BMI3_ANY_MOTION_OUT, map_int.any_motion_out);
+        reg_data[0] = BMI3_SET_BITS(reg_data[0], BMI3_FLAT_OUT, map_int.flat_out);
+        reg_data[0] = BMI3_SET_BITS(reg_data[0], BMI3_ORIENTATION_OUT, map_int.orientation_out);
 
-        reg_data[0] = (uint8_t)(no_motion_out | any_motion_out | flat_out | orientation_out);
-        reg_data[1] = (uint8_t)((step_detector_out | step_counter_out | sig_motion_out | tilt_out) >> 8);
+        temp_value = (uint16_t)(reg_data[1]) << 8;
+        temp_value = BMI3_SET_BITS(temp_value, BMI3_STEP_DETECTOR_OUT, map_int.step_detector_out);
+        temp_value = BMI3_SET_BITS(temp_value, BMI3_STEP_COUNTER_OUT, map_int.step_counter_out);
+        temp_value = BMI3_SET_BITS(temp_value, BMI3_SIG_MOTION_OUT, map_int.sig_motion_out);
+        temp_value = BMI3_SET_BITS(temp_value, BMI3_TILT_OUT, map_int.tilt_out);
+        reg_data[1] = (uint8_t)(temp_value >> 8);
 
-        tap_out = (BMI3_SET_BIT_POS0(reg_data[2], BMI3_TAP_OUT, map_int.tap_out) & BMI3_TAP_OUT_MASK);
-        i3c_out = (BMI3_SET_BITS(reg_data[2], BMI3_I3C_OUT, map_int.i3c_out) & BMI3_I3C_OUT_MASK);
-        err_status = (BMI3_SET_BITS(reg_data[2], BMI3_ERR_STATUS, map_int.err_status) & BMI3_ERR_STATUS_MASK);
-        temp = (BMI3_SET_BITS(reg_data[2], BMI3_TEMP_DRDY_INT, map_int.temp_drdy_int) & BMI3_TEMP_DRDY_INT_MASK);
-        gyr = (BMI3_SET_BITS(reg_data[3], BMI3_GYR_DRDY_INT, map_int.gyr_drdy_int) & BMI3_GYR_DRDY_INT_MASK);
-        acc = (BMI3_SET_BITS(reg_data[3], BMI3_ACC_DRDY_INT, map_int.acc_drdy_int) & BMI3_ACC_DRDY_INT_MASK);
-        fwm =
-            (BMI3_SET_BITS(reg_data[3], BMI3_FIFO_WATERMARK_INT,
-                           map_int.fifo_watermark_int) & BMI3_FIFO_WATERMARK_INT_MASK);
-        ffull = (BMI3_SET_BITS(reg_data[3], BMI3_FIFO_FULL_INT, map_int.fifo_full_int) & BMI3_FIFO_FULL_INT_MASK);
+        reg_data[2] = BMI3_SET_BIT_POS0(reg_data[2], BMI3_TAP_OUT, map_int.tap_out);
+        reg_data[2] = BMI3_SET_BITS(reg_data[2], BMI3_I3C_OUT, map_int.i3c_out);
+        reg_data[2] = BMI3_SET_BITS(reg_data[2], BMI3_ERR_STATUS, map_int.err_status);
+        reg_data[2] = BMI3_SET_BITS(reg_data[2], BMI3_TEMP_DRDY_INT, map_int.temp_drdy_int);
 
-        reg_data[2] = (uint8_t)(tap_out | i3c_out | err_status | temp);
-        reg_data[3] = (uint8_t)((gyr | acc | fwm | ffull) >> 8);
+        temp_value = (uint16_t)(reg_data[3]) << 8;
+        temp_value = BMI3_SET_BITS(temp_value, BMI3_GYR_DRDY_INT, map_int.gyr_drdy_int);
+        temp_value = BMI3_SET_BITS(temp_value, BMI3_ACC_DRDY_INT, map_int.acc_drdy_int);
+        temp_value = BMI3_SET_BITS(temp_value, BMI3_FIFO_WATERMARK_INT, map_int.fifo_watermark_int);
+        temp_value = BMI3_SET_BITS(temp_value, BMI3_FIFO_FULL_INT, map_int.fifo_full_int);
+        reg_data[3] = (uint8_t)(temp_value >> 8);
 
         rslt = bmi3_set_regs(BMI3_REG_INT_MAP1, reg_data, 4, dev);
     }
@@ -2535,6 +2492,20 @@ int8_t bmi3_select_sensor(struct bmi3_feature_enable *enable, struct bmi3_dev *d
 }
 
 /*!
+ * @details This API gets the sensor data such as accel, gyro, temperature, sensor time, saturation flags
+ * and interrupt status
+ */
+int8_t bmi3_read_reg_data(uint8_t *reg_data, struct bmi3_dev *dev)
+{
+    /* Variable to store result of API */
+    int8_t rslt;
+
+    rslt = bmi3_get_regs(BMI3_REG_ACC_DATA_X, reg_data, BMI3_READ_REG_DATA_LEN, dev);
+
+    return rslt;
+}
+
+/*!
  * @brief This API gets the sensor/feature data for accelerometer, gyroscope,
  * step counter, orientation, i3c sync accel, i3c sync gyro and i3c sync temperature.
  */
@@ -2546,56 +2517,67 @@ int8_t bmi3_get_sensor_data(struct bmi3_sensor_data *sensor_data, uint8_t n_sens
     /* Variable to define loop */
     uint8_t loop;
 
+    uint8_t reg_data[BMI3_READ_REG_DATA_LEN];
+
     /* Null-pointer check */
     rslt = null_ptr_check(dev);
 
     if ((rslt == BMI3_OK) && (sensor_data != NULL))
     {
-        for (loop = 0; loop < n_sens; loop++)
+        rslt = bmi3_read_reg_data(reg_data, dev);
+
+        if (rslt == BMI3_OK)
         {
-            switch (sensor_data[loop].type)
+            for (loop = 0; loop < n_sens; loop++)
             {
-                case BMI3_ACCEL:
-                    rslt = get_accel_sensor_data(&sensor_data[loop].sens_data.acc, BMI3_REG_ACC_DATA_X, dev);
-                    break;
+                switch (sensor_data[loop].type)
+                {
+                    case BMI3_ACCEL:
+                        rslt = get_accel_sensortime_sat_data(&sensor_data[loop].sens_data.acc, reg_data);
+                        break;
 
-                case BMI3_GYRO:
-                    rslt = get_gyro_sensor_data(&sensor_data[loop].sens_data.gyr, BMI3_REG_GYR_DATA_X, dev);
-                    break;
+                    case BMI3_GYRO:
+                        rslt = get_gyro_sensortime_sat_data(&sensor_data[loop].sens_data.gyr, reg_data);
+                        break;
 
-                case BMI3_STEP_COUNTER:
-                    rslt = get_step_counter_sensor_data(&sensor_data[loop].sens_data.step_counter_output,
-                                                        BMI3_REG_FEATURE_IO2,
-                                                        dev);
-                    break;
+                    case BMI3_TEMP:
+                        rslt = get_temp_sensortime_data(&sensor_data[loop].sens_data.temp, reg_data);
+                        break;
 
-                case BMI3_ORIENTATION:
-                    rslt = get_orient_output_data(&sensor_data[loop].sens_data.orient_output,
-                                                  BMI3_REG_FEATURE_EVENT_EXT,
-                                                  dev);
-                    break;
+                    case BMI3_STEP_COUNTER:
+                        rslt = get_step_counter_sensor_data(&sensor_data[loop].sens_data.step_counter_output,
+                                                            BMI3_REG_FEATURE_IO2,
+                                                            dev);
+                        break;
 
-                case BMI3_I3C_SYNC_ACCEL:
-                    rslt = get_i3c_sync_accel_sensor_data(&sensor_data[loop].sens_data.i3c_sync, dev);
-                    break;
+                    case BMI3_ORIENTATION:
+                        rslt = get_orient_output_data(&sensor_data[loop].sens_data.orient_output,
+                                                      BMI3_REG_FEATURE_EVENT_EXT,
+                                                      dev);
+                        break;
 
-                case BMI3_I3C_SYNC_GYRO:
-                    rslt = get_i3c_sync_gyro_sensor_data(&sensor_data[loop].sens_data.i3c_sync, dev);
-                    break;
+                    case BMI3_I3C_SYNC_ACCEL:
+                        rslt = get_i3c_sync_accel_sensor_data(&sensor_data[loop].sens_data.i3c_sync, dev);
+                        break;
 
-                case BMI3_I3C_SYNC_TEMP:
-                    rslt = get_i3c_sync_temp_data(&sensor_data[loop].sens_data.i3c_sync, dev);
-                    break;
+                    case BMI3_I3C_SYNC_GYRO:
+                        rslt = get_i3c_sync_gyro_sensor_data(&sensor_data[loop].sens_data.i3c_sync, dev);
+                        break;
 
-                default:
-                    rslt = BMI3_E_INVALID_SENSOR;
-                    break;
-            }
+                    case BMI3_I3C_SYNC_TEMP:
+                        rslt = get_i3c_sync_temp_data(&sensor_data[loop].sens_data.i3c_sync, dev);
+                        break;
 
-            /* Return error if any of the get sensor data fails */
-            if (rslt != BMI3_OK)
-            {
-                break;
+                    default:
+                        rslt = BMI3_E_INVALID_SENSOR;
+                        break;
+                }
+
+                /* Return error if any of the get sensor data fails */
+                if (rslt != BMI3_OK)
+                {
+                    break;
+                }
             }
         }
     }
@@ -2678,7 +2660,6 @@ int8_t bmi3_get_feature_engine_error_status(uint8_t *feature_engine_err_reg_lsb,
     {
         /* Read the feature engine error codes */
         rslt = bmi3_get_regs(BMI3_REG_FEATURE_IO1, data, 2, dev);
-
         if (rslt == BMI3_OK)
         {
             *feature_engine_err_reg_lsb = data[0];
@@ -2714,8 +2695,6 @@ int8_t bmi3_set_int_pin_config(const struct bmi3_int_pin_config *int_cfg, struct
     /* Variable to define type of interrupt pin  */
     uint8_t int_pin = 0;
 
-    uint16_t lvl, od, output_en;
-
     /* Null-pointer check */
     rslt = null_ptr_check(dev);
 
@@ -2727,7 +2706,7 @@ int8_t bmi3_set_int_pin_config(const struct bmi3_int_pin_config *int_cfg, struct
         if ((int_pin > BMI3_INT_NONE) && (int_pin < BMI3_INT_PIN_MAX))
         {
             /* Get the previous configuration data */
-            rslt = bmi3_get_regs(BMI3_REG_IO_INT_CTRL, data_array, 2, dev);
+            rslt = bmi3_get_regs(BMI3_REG_IO_INT_CTRL, data_array, 3, dev);
 
             if (rslt == BMI3_OK)
             {
@@ -2737,16 +2716,16 @@ int8_t bmi3_set_int_pin_config(const struct bmi3_int_pin_config *int_cfg, struct
                     reg_data = data_array[0];
 
                     /* Configure active low or high */
-                    lvl = BMI3_SET_BIT_POS0(reg_data, BMI3_INT1_LVL, int_cfg->pin_cfg[0].lvl);
+                    reg_data = BMI3_SET_BIT_POS0(reg_data, BMI3_INT1_LVL, int_cfg->pin_cfg[0].lvl);
 
                     /* Configure push-pull or open drain */
-                    od = BMI3_SET_BITS(reg_data, BMI3_INT1_OD, int_cfg->pin_cfg[0].od);
+                    reg_data = BMI3_SET_BITS(reg_data, BMI3_INT1_OD, int_cfg->pin_cfg[0].od);
 
                     /* Configure output enable */
-                    output_en = BMI3_SET_BITS(reg_data, BMI3_INT1_OUTPUT_EN, int_cfg->pin_cfg[0].output_en);
+                    reg_data = BMI3_SET_BITS(reg_data, BMI3_INT1_OUTPUT_EN, int_cfg->pin_cfg[0].output_en);
 
                     /* Copy the data to be written in the respective array */
-                    data_array[0] = (uint8_t)(lvl | od | output_en);
+                    data_array[0] = (uint8_t)(reg_data & 0xFF);
                 }
 
                 /* Set interrupt pin 2 configuration */
@@ -2755,16 +2734,16 @@ int8_t bmi3_set_int_pin_config(const struct bmi3_int_pin_config *int_cfg, struct
                     reg_data = ((uint16_t)data_array[1] << 8);
 
                     /* Configure active low or high */
-                    lvl = BMI3_SET_BITS(reg_data, BMI3_INT2_LVL, int_cfg->pin_cfg[1].lvl);
+                    reg_data = BMI3_SET_BITS(reg_data, BMI3_INT2_LVL, int_cfg->pin_cfg[1].lvl);
 
                     /* Configure push-pull or open drain */
-                    od = BMI3_SET_BITS(reg_data, BMI3_INT2_OD, int_cfg->pin_cfg[1].od);
+                    reg_data = BMI3_SET_BITS(reg_data, BMI3_INT2_OD, int_cfg->pin_cfg[1].od);
 
                     /* Configure output enable */
-                    output_en = BMI3_SET_BITS(reg_data, BMI3_INT2_OUTPUT_EN, int_cfg->pin_cfg[1].output_en);
+                    reg_data = BMI3_SET_BITS(reg_data, BMI3_INT2_OUTPUT_EN, int_cfg->pin_cfg[1].output_en);
 
                     /* Copy the data to be written in the respective array */
-                    data_array[1] = (uint8_t)((lvl | od | output_en) >> 8);
+                    data_array[1] = (uint8_t)(reg_data >> 8);
                 }
 
                 /* Set the configurations simultaneously as
@@ -2879,36 +2858,6 @@ int8_t bmi3_get_sensor_time(uint32_t *sensor_time, struct bmi3_dev *dev)
                 (uint32_t)(reg_data[0] | (uint32_t)reg_data[1] << 8 | (uint32_t)reg_data[2] << 16 |
                            (uint32_t)reg_data[3] <<
                     24);
-        }
-    }
-    else
-    {
-        rslt = BMI3_E_NULL_PTR;
-    }
-
-    return rslt;
-}
-
-/*!
- * @brief This API reads the raw temperature data from the register and can be
- * converted into degree celsius.
- */
-int8_t bmi3_get_temperature_data(uint16_t *temp_data, struct bmi3_dev *dev)
-{
-    /* Variable to store result of API */
-    int8_t rslt;
-
-    /* Array to define data stored in register */
-    uint8_t reg_data[2] = { 0 };
-
-    if (temp_data != NULL)
-    {
-        /* Read the sensor data */
-        rslt = bmi3_get_regs(BMI3_REG_TEMP_DATA, reg_data, 2, dev);
-
-        if (rslt == BMI3_OK)
-        {
-            *temp_data = (uint16_t)(reg_data[0] | ((uint16_t)reg_data[1] << 8));
         }
     }
     else
@@ -3403,8 +3352,6 @@ int8_t bmi3_perform_self_test(uint8_t st_selection, struct bmi3_st_result *st_re
     /* Variable to store result of API */
     int8_t rslt;
 
-    uint16_t reg_data[9];
-
     uint8_t data_array[18] = { 0 };
 
     /* Variable to store gyro filter coefficient base address */
@@ -3432,15 +3379,13 @@ int8_t bmi3_perform_self_test(uint8_t st_selection, struct bmi3_st_result *st_re
             }
         }
 
-        reg_data[0] = (uint16_t)(data_array[0] | (uint16_t)data_array[1] << 8);
-        reg_data[1] = (uint16_t)(data_array[2] | (uint16_t)data_array[3] << 8);
-        reg_data[2] = (uint16_t)(data_array[4] | (uint16_t)data_array[5] << 8);
-        reg_data[3] = (uint16_t)(data_array[6] | (uint16_t)data_array[7] << 8);
-        reg_data[4] = (uint16_t)(data_array[8] | (uint16_t)data_array[9] << 8);
-        reg_data[5] = (uint16_t)(data_array[10] | (uint16_t)data_array[11] << 8);
-        reg_data[6] = (uint16_t)(data_array[12] | (uint16_t)data_array[13] << 8);
-        reg_data[7] = (uint16_t)(data_array[14] | (uint16_t)data_array[15] << 8);
-        reg_data[8] = (uint16_t)(data_array[16] | (uint16_t)data_array[17] << 8);
+#ifdef BMI330
+        uint16_t reg_data[9];
+        for (uint8_t data_index = 0; data_index < 9; data_index++)
+        {
+            reg_data[data_index] =
+                (uint16_t)(data_array[data_index * 2] | (uint16_t)data_array[data_index * 2 + 1] << 8);
+        }
 
         if ((reg_data[3] != BMI3_SC_ST_VALUE_3) &&
             ((reg_data[0] != BMI3_SC_ST_VALUE_0) || (reg_data[1] != BMI3_SC_ST_VALUE_1) ||
@@ -3450,6 +3395,8 @@ int8_t bmi3_perform_self_test(uint8_t st_selection, struct bmi3_st_result *st_re
         {
             rslt = set_gyro_filter_coefficients(dev);
         }
+
+#endif
 
         if (rslt == BMI3_OK)
         {
@@ -4319,12 +4266,6 @@ int8_t bmi3_perform_accel_foc(const struct bmi3_accel_foc_g_value *accel_g_value
                 rslt = bmi3_get_sensor_config(&config, 1, dev);
             }
 
-            /* Set configurations for FOC */
-            if (rslt == BMI3_OK)
-            {
-                rslt = set_accel_foc_config(dev);
-            }
-
             /* Perform accelerometer FOC */
             if (rslt == BMI3_OK)
             {
@@ -4868,36 +4809,45 @@ static int8_t validate_gyr_odr_range(uint8_t *odr, uint8_t *range, struct bmi3_d
 }
 
 /*!
- * @brief This internal API gets the accelerometer data from the register.
+ * @brief This internal API stores the accelerometer, sensortime and accel saturation data from the register.
  */
-static int8_t get_accel_sensor_data(struct bmi3_sens_axes_data *data, uint8_t reg_addr, struct bmi3_dev *dev)
+static int8_t get_accel_sensortime_sat_data(struct bmi3_sens_axes_data *data, const uint8_t *reg_data)
 {
     /* Variable to store result of API */
-    int8_t rslt;
+    int8_t rslt = BMI3_OK;
 
-    /* Array to define data stored in register */
-    uint8_t reg_data[BMI3_ACC_NUM_BYTES] = { 0 };
-
-    /* Stores the accel x, y and z axis data from register */
+    /* Stores the accel x, y, z axis, sensortime and accel saturation data from register */
     uint16_t acc_data[6];
 
-    if (data != NULL)
+    if ((data != NULL) && (reg_data != NULL))
     {
-        /* Read the sensor data */
-        rslt = bmi3_get_regs(reg_addr, reg_data, BMI3_ACC_NUM_BYTES, dev);
+        acc_data[0] = (reg_data[0] | (uint16_t)reg_data[1] << 8);
+        acc_data[1] = (reg_data[2] | (uint16_t)reg_data[3] << 8);
+        acc_data[2] = (reg_data[4] | (uint16_t)reg_data[5] << 8);
+        acc_data[3] = (reg_data[14] | (uint16_t)reg_data[15] << 8);
+        acc_data[4] = (reg_data[16] | (uint16_t)reg_data[17] << 8);
+        acc_data[5] = reg_data[18];
 
-        if (rslt == BMI3_OK)
-        {
-            acc_data[0] = (reg_data[0] | (uint16_t)reg_data[1] << 8);
-            acc_data[1] = (reg_data[2] | (uint16_t)reg_data[3] << 8);
-            acc_data[2] = (reg_data[4] | (uint16_t)reg_data[5] << 8);
-            acc_data[3] = (reg_data[14] | (uint16_t)reg_data[15] << 8);
-            acc_data[4] = (reg_data[16] | (uint16_t)reg_data[17] << 8);
-            acc_data[5] = reg_data[18];
+        /* Stores accel x-axis data */
+        data->x = (int16_t)acc_data[0];
 
-            /* Get accelerometer data from the register */
-            get_acc_data(data, acc_data);
-        }
+        /* Stores accel y-axis data */
+        data->y = (int16_t)acc_data[1];
+
+        /* Stores accel z-axis data */
+        data->z = (int16_t)acc_data[2];
+
+        /* Stores sensor time data */
+        data->sens_time = (acc_data[3] | ((uint32_t)acc_data[4] << 16));
+
+        /* Stores saturation x-axis data */
+        data->sat_x = (acc_data[5] & BMI3_SATF_ACC_X_MASK);
+
+        /* Stores saturation y-axis data */
+        data->sat_y = (acc_data[5] & BMI3_SATF_ACC_Y_MASK) >> BMI3_SATF_ACC_Y_POS;
+
+        /* Stores saturation z-axis data */
+        data->sat_z = (acc_data[5] & BMI3_SATF_ACC_Z_MASK) >> BMI3_SATF_ACC_Z_POS;
     }
     else
     {
@@ -4908,36 +4858,70 @@ static int8_t get_accel_sensor_data(struct bmi3_sens_axes_data *data, uint8_t re
 }
 
 /*!
- * @brief This internal API gets the gyroscope data from the register.
+ * @brief This internal API stores the gyroscope, sensortime and gyro saturation data from the register.
  */
-static int8_t get_gyro_sensor_data(struct bmi3_sens_axes_data *data, uint8_t reg_addr, struct bmi3_dev *dev)
+static int8_t get_gyro_sensortime_sat_data(struct bmi3_sens_axes_data *data, const uint8_t *reg_data)
 {
     /* Variable to store result of API */
-    int8_t rslt;
-
-    /* Array to define data stored in register */
-    uint8_t reg_data[BMI3_GYR_NUM_BYTES] = { 0 };
+    int8_t rslt = BMI3_OK;
 
     /* Variable to store x, y and z axis gyro data */
     uint16_t gyr_data[6];
 
-    if (data != NULL)
+    if ((data != NULL) && (reg_data != NULL))
     {
-        /* Read the sensor data */
-        rslt = bmi3_get_regs(reg_addr, reg_data, BMI3_GYR_NUM_BYTES, dev);
+        gyr_data[0] = (reg_data[6] | (uint16_t)reg_data[7] << 8);
+        gyr_data[1] = (reg_data[8] | (uint16_t)reg_data[9] << 8);
+        gyr_data[2] = (reg_data[10] | (uint16_t)reg_data[11] << 8);
+        gyr_data[3] = (reg_data[14] | (uint16_t)reg_data[15] << 8);
+        gyr_data[4] = (reg_data[16] | (uint16_t)reg_data[17] << 8);
+        gyr_data[5] = reg_data[18];
 
-        if (rslt == BMI3_OK)
-        {
-            gyr_data[0] = (reg_data[0] | (uint16_t)reg_data[1] << 8);
-            gyr_data[1] = (reg_data[2] | (uint16_t)reg_data[3] << 8);
-            gyr_data[2] = (reg_data[4] | (uint16_t)reg_data[5] << 8);
-            gyr_data[3] = (reg_data[8] | (uint16_t)reg_data[9] << 8);
-            gyr_data[4] = (reg_data[10] | (uint16_t)reg_data[11] << 8);
-            gyr_data[5] = reg_data[12];
+        /* Stores gyro x-axis data */
+        data->x = (int16_t)gyr_data[0];
 
-            /* Get gyro data from the register */
-            get_gyr_data(data, gyr_data);
-        }
+        /* Stores gyro y-axis data */
+        data->y = (int16_t)gyr_data[1];
+
+        /* Stores gyro z-axis data */
+        data->z = (int16_t)gyr_data[2];
+
+        /* Stores sensor time data */
+        data->sens_time = (gyr_data[3] | ((uint32_t)gyr_data[4] << 16));
+
+        /* Stores saturation x-axis data */
+        data->sat_x = (gyr_data[5] & BMI3_SATF_GYR_X_MASK) >> BMI3_SATF_GYR_X_POS;
+
+        /* Stores saturation y-axis data */
+        data->sat_y = (gyr_data[5] & BMI3_SATF_GYR_Y_MASK) >> BMI3_SATF_GYR_Y_POS;
+
+        /* Stores saturation z-axis data */
+        data->sat_z = (gyr_data[5] & BMI3_SATF_GYR_Z_MASK) >> BMI3_SATF_GYR_Z_POS;
+    }
+    else
+    {
+        rslt = BMI3_E_NULL_PTR;
+    }
+
+    return rslt;
+}
+
+/*!
+ * @brief This internal API reads the raw temperature data from the register and can be
+ * converted into degree celsius.
+ */
+static int8_t get_temp_sensortime_data(struct bmi3_sens_axes_data *data, const uint8_t *reg_data)
+{
+    /* Variable to store result of API */
+    int8_t rslt = BMI3_OK;
+
+    if ((data != NULL) && (reg_data != NULL))
+    {
+        data->temp_data = (uint16_t)(reg_data[12] | ((uint16_t)reg_data[13] << 8));
+
+        /* Stores sensor time data */
+        data->sens_time =
+            (reg_data[14] | (uint16_t)reg_data[15] << 8 | (uint32_t)reg_data[16] << 16 | (uint32_t)reg_data[17] << 24);
     }
     else
     {
@@ -5065,60 +5049,6 @@ static int8_t get_gyro_config(struct bmi3_gyro_config *config, struct bmi3_dev *
 }
 
 /*!
- * @brief This internal API gets the accelerometer data.
- */
-static void get_acc_data(struct bmi3_sens_axes_data *data, const uint16_t *reg_data)
-{
-    /* Stores accel x-axis data */
-    data->x = (int16_t)reg_data[0];
-
-    /* Stores accel y-axis data */
-    data->y = (int16_t)reg_data[1];
-
-    /* Stores accel z-axis data */
-    data->z = (int16_t)reg_data[2];
-
-    /* Stores sensor time data */
-    data->sens_time = (reg_data[3] | ((uint32_t)reg_data[4] << 16));
-
-    /* Stores saturation x-axis data */
-    data->sat_x = (reg_data[5] & BMI3_SATF_ACC_X_MASK);
-
-    /* Stores saturation y-axis data */
-    data->sat_y = (reg_data[5] & BMI3_SATF_ACC_Y_MASK) >> BMI3_SATF_ACC_Y_POS;
-
-    /* Stores saturation z-axis data */
-    data->sat_z = (reg_data[5] & BMI3_SATF_ACC_Z_MASK) >> BMI3_SATF_ACC_Z_POS;
-}
-
-/*!
- * @brief This internal API gets the gyroscope data.
- */
-static void get_gyr_data(struct bmi3_sens_axes_data *data, const uint16_t *reg_data)
-{
-    /* Stores accel x-axis data */
-    data->x = (int16_t)reg_data[0];
-
-    /* Stores accel y-axis data */
-    data->y = (int16_t)reg_data[1];
-
-    /* Stores accel z-axis data */
-    data->z = (int16_t)reg_data[2];
-
-    /* Stores sensor time data */
-    data->sens_time = (reg_data[3] | ((uint32_t)reg_data[4] << 16));
-
-    /* Stores saturation x-axis data */
-    data->sat_x = (reg_data[5] & BMI3_SATF_GYR_X_MASK) >> BMI3_SATF_GYR_X_POS;
-
-    /* Stores saturation y-axis data */
-    data->sat_y = (reg_data[5] & BMI3_SATF_GYR_Y_MASK) >> BMI3_SATF_GYR_Y_POS;
-
-    /* Stores saturation z-axis data */
-    data->sat_z = (reg_data[5] & BMI3_SATF_GYR_Z_MASK) >> BMI3_SATF_GYR_Z_POS;
-}
-
-/*!
  * @brief This internal API is used to validate the device structure pointer for
  * null conditions.
  */
@@ -5194,23 +5124,6 @@ static int8_t set_feature_enable(const struct bmi3_feature_enable *enable, struc
     uint8_t feature[2] = { 0 };
     uint8_t get_feature[2];
 
-    uint16_t no_motion_x_en;
-    uint16_t no_motion_y_en;
-    uint16_t no_motion_z_en;
-    uint16_t any_motion_x_en;
-    uint16_t any_motion_y_en;
-    uint16_t any_motion_z_en;
-    uint16_t flat_en;
-    uint16_t orientation_en;
-    uint16_t step_detector_en;
-    uint16_t step_counter_en;
-    uint16_t sig_motion_en;
-    uint16_t tilt_en;
-    uint16_t tap_detector_s_tap_en;
-    uint16_t tap_detector_d_tap_en;
-    uint16_t tap_detector_t_tap_en;
-    uint16_t i3c_sync_en;
-
     /* Array variable to clear feature before enabling into register */
     uint8_t reset[2] = { 0 };
 
@@ -5223,53 +5136,57 @@ static int8_t set_feature_enable(const struct bmi3_feature_enable *enable, struc
 
         if (rslt == BMI3_OK)
         {
-            no_motion_x_en =
-                (BMI3_SET_BIT_POS0(get_feature[0], BMI3_NO_MOTION_X_EN,
-                                   enable->no_motion_x_en) & BMI3_NO_MOTION_X_EN_MASK);
-            no_motion_y_en =
-                (BMI3_SET_BITS(get_feature[0], BMI3_NO_MOTION_Y_EN, enable->no_motion_y_en) & BMI3_NO_MOTION_Y_EN_MASK);
-            no_motion_z_en =
-                (BMI3_SET_BITS(get_feature[0], BMI3_NO_MOTION_Z_EN, enable->no_motion_z_en) & BMI3_NO_MOTION_Z_EN_MASK);
-            any_motion_x_en =
-                (BMI3_SET_BITS(get_feature[0], BMI3_ANY_MOTION_X_EN,
-                               enable->any_motion_x_en) & BMI3_ANY_MOTION_X_EN_MASK);
-            any_motion_y_en =
-                (BMI3_SET_BITS(get_feature[0], BMI3_ANY_MOTION_Y_EN,
-                               enable->any_motion_y_en) & BMI3_ANY_MOTION_Y_EN_MASK);
-            any_motion_z_en =
-                (BMI3_SET_BITS(get_feature[0], BMI3_ANY_MOTION_Z_EN,
-                               enable->any_motion_z_en) & BMI3_ANY_MOTION_Z_EN_MASK);
-            flat_en = (BMI3_SET_BITS(get_feature[0], BMI3_FLAT_EN, enable->flat_en) & BMI3_FLAT_EN_MASK);
-            orientation_en =
-                (BMI3_SET_BITS(get_feature[0], BMI3_ORIENTATION_EN, enable->orientation_en) & BMI3_ORIENTATION_EN_MASK);
-
-            step_detector_en =
-                (BMI3_SET_BITS(get_feature[1], BMI3_STEP_DETECTOR_EN,
-                               enable->step_detector_en) & BMI3_STEP_DETECTOR_EN_MASK);
-            step_counter_en =
-                (BMI3_SET_BITS(get_feature[1], BMI3_STEP_COUNTER_EN,
-                               enable->step_counter_en) & BMI3_STEP_COUNTER_EN_MASK);
-            sig_motion_en =
-                (BMI3_SET_BITS(get_feature[1], BMI3_SIG_MOTION_EN, enable->sig_motion_en) & BMI3_SIG_MOTION_EN_MASK);
-            tilt_en = (BMI3_SET_BITS(get_feature[1], BMI3_TILT_EN, enable->tilt_en) & BMI3_TILT_EN_MASK);
-            tap_detector_s_tap_en =
-                (BMI3_SET_BITS(get_feature[1], BMI3_TAP_DETECTOR_S_TAP_EN,
-                               enable->tap_detector_s_tap_en) & BMI3_TAP_DETECTOR_S_TAP_EN_MASK);
-            tap_detector_d_tap_en =
-                (BMI3_SET_BITS(get_feature[1], BMI3_TAP_DETECTOR_D_TAP_EN,
-                               enable->tap_detector_d_tap_en) & BMI3_TAP_DETECTOR_D_TAP_EN_MASK);
-            tap_detector_t_tap_en =
-                (BMI3_SET_BITS(get_feature[1], BMI3_TAP_DETECTOR_T_TAP_EN,
-                               enable->tap_detector_t_tap_en) & BMI3_TAP_DETECTOR_T_TAP_EN_MASK);
-            i3c_sync_en =
-                (BMI3_SET_BITS(get_feature[1], BMI3_I3C_SYNC_EN, enable->i3c_sync_en) & BMI3_I3C_SYNC_EN_MASK);
-
             feature[0] =
-                (uint8_t)(no_motion_x_en | no_motion_y_en | no_motion_z_en | any_motion_x_en | any_motion_y_en |
-                          any_motion_z_en | flat_en | orientation_en);
+                (uint8_t)(BMI3_SET_BIT_POS0(get_feature[0], BMI3_NO_MOTION_X_EN,
+                                            enable->no_motion_x_en) & BMI3_NO_MOTION_X_EN_MASK);
+            feature[0] |=
+                (uint8_t)(BMI3_SET_BITS(get_feature[0], BMI3_NO_MOTION_Y_EN,
+                                        enable->no_motion_y_en) & BMI3_NO_MOTION_Y_EN_MASK);
+            feature[0] |=
+                (uint8_t)(BMI3_SET_BITS(get_feature[0], BMI3_NO_MOTION_Z_EN,
+                                        enable->no_motion_z_en) & BMI3_NO_MOTION_Z_EN_MASK);
+            feature[0] |=
+                (uint8_t)(BMI3_SET_BITS(get_feature[0], BMI3_ANY_MOTION_X_EN,
+                                        enable->any_motion_x_en) & BMI3_ANY_MOTION_X_EN_MASK);
+            feature[0] |=
+                (uint8_t)(BMI3_SET_BITS(get_feature[0], BMI3_ANY_MOTION_Y_EN,
+                                        enable->any_motion_y_en) & BMI3_ANY_MOTION_Y_EN_MASK);
+            feature[0] |=
+                (uint8_t)(BMI3_SET_BITS(get_feature[0], BMI3_ANY_MOTION_Z_EN,
+                                        enable->any_motion_z_en) & BMI3_ANY_MOTION_Z_EN_MASK);
+            feature[0] |= (uint8_t)(BMI3_SET_BITS(get_feature[0], BMI3_FLAT_EN, enable->flat_en) & BMI3_FLAT_EN_MASK);
+            feature[0] |=
+                (uint8_t)(BMI3_SET_BITS(get_feature[0], BMI3_ORIENTATION_EN,
+                                        enable->orientation_en) & BMI3_ORIENTATION_EN_MASK);
+
             feature[1] =
-                (uint8_t)((step_detector_en | step_counter_en | sig_motion_en | tilt_en | tap_detector_s_tap_en |
-                           tap_detector_d_tap_en | tap_detector_t_tap_en | i3c_sync_en) >> 8);
+                (uint8_t)((BMI3_SET_BITS(get_feature[1], BMI3_STEP_DETECTOR_EN,
+                                         enable->step_detector_en) & BMI3_STEP_DETECTOR_EN_MASK) >> 8);
+            feature[1] |=
+                (uint8_t)((BMI3_SET_BITS(get_feature[1], BMI3_STEP_COUNTER_EN,
+                                         enable->step_counter_en) & BMI3_STEP_COUNTER_EN_MASK) >> 8);
+            feature[1] |=
+                (uint8_t)((BMI3_SET_BITS(get_feature[1], BMI3_SIG_MOTION_EN,
+                                         enable->sig_motion_en) & BMI3_SIG_MOTION_EN_MASK) >> 8);
+
+            feature[1] |=
+                (uint8_t)((BMI3_SET_BITS(get_feature[1], BMI3_TILT_EN, enable->tilt_en) & BMI3_TILT_EN_MASK) >> 8);
+
+            feature[1] |=
+                (uint8_t)((BMI3_SET_BITS(get_feature[1], BMI3_TAP_DETECTOR_S_TAP_EN,
+                                         enable->tap_detector_s_tap_en) & BMI3_TAP_DETECTOR_S_TAP_EN_MASK) >> 8);
+
+            feature[1] |=
+                (uint8_t)((BMI3_SET_BITS(get_feature[1], BMI3_TAP_DETECTOR_D_TAP_EN,
+                                         enable->tap_detector_d_tap_en) & BMI3_TAP_DETECTOR_D_TAP_EN_MASK) >> 8);
+
+            feature[1] |=
+                (uint8_t)((BMI3_SET_BITS(get_feature[1], BMI3_TAP_DETECTOR_T_TAP_EN,
+                                         enable->tap_detector_t_tap_en) & BMI3_TAP_DETECTOR_T_TAP_EN_MASK) >> 8);
+
+            feature[1] |=
+                (uint8_t)((BMI3_SET_BITS(get_feature[1], BMI3_I3C_SYNC_EN,
+                                         enable->i3c_sync_en) & BMI3_I3C_SYNC_EN_MASK) >> 8);
 
             /* Reset the register before updating new values */
             rslt = bmi3_set_regs(BMI3_REG_FEATURE_IO0, reset, 2, dev);
@@ -5445,20 +5362,7 @@ static int8_t set_any_motion_config(const struct bmi3_any_motion_config *config,
     /* Array to define the feature configuration */
     uint8_t any_mot_config[6] = { 0 };
 
-    uint8_t data_array[6] = { 0 };
-
-    uint16_t duration1, duration2;
-
-    uint16_t threshold1, threshold2;
-
-    uint16_t hysteresis1, hysteresis2;
-
-    uint16_t threshold, hysteresis, duration, wait_time1;
-
-    uint16_t acc_ref_up;
-
-    /* Wait time for clearing the event after slope is below threshold */
-    uint16_t wait_time;
+    uint16_t threshold, acc_ref_up, hysteresis, duration, wait_time;
 
     if (config != NULL)
     {
@@ -5468,47 +5372,51 @@ static int8_t set_any_motion_config(const struct bmi3_any_motion_config *config,
         if (rslt == BMI3_OK)
         {
             /* Set threshold for lsb 8 bits */
-            threshold1 = BMI3_SET_BIT_POS0(data_array[0], BMI3_ANY_NO_SLOPE_THRESHOLD, config->slope_thres);
+            any_mot_config[0] = (uint8_t)BMI3_SET_BIT_POS0(any_mot_config[0],
+                                                           BMI3_ANY_NO_SLOPE_THRESHOLD,
+                                                           config->slope_thres);
 
-            threshold = ((uint16_t)data_array[1] << 8);
+            threshold = ((uint16_t)any_mot_config[1] << 8);
 
             /* Set threshold for msb 8 bits */
-            threshold2 = BMI3_SET_BIT_POS0(threshold, BMI3_ANY_NO_SLOPE_THRESHOLD, config->slope_thres);
+            any_mot_config[1] =
+                (BMI3_SET_BIT_POS0(threshold, BMI3_ANY_NO_SLOPE_THRESHOLD,
+                                   config->slope_thres) & BMI3_ANY_NO_SLOPE_THRESHOLD_MASK) >> 8;
+
+            acc_ref_up = ((uint16_t)any_mot_config[1] << 8);
 
             /* Set accel reference */
-            acc_ref_up = ((uint16_t)data_array[1] << 8);
-
-            acc_ref_up = BMI3_SET_BITS(acc_ref_up, BMI3_ANY_NO_ACC_REF_UP, config->acc_ref_up);
+            any_mot_config[1] |=
+                (BMI3_SET_BITS(acc_ref_up, BMI3_ANY_NO_ACC_REF_UP,
+                               config->acc_ref_up) & BMI3_ANY_NO_ACC_REF_UP_MASK) >> 8;
 
             /* Set hysteresis for lsb 8 bits */
-            hysteresis1 = BMI3_SET_BIT_POS0(data_array[2], BMI3_ANY_NO_HYSTERESIS, config->hysteresis);
+            any_mot_config[2] =
+                (uint8_t)BMI3_SET_BIT_POS0(any_mot_config[2], BMI3_ANY_NO_HYSTERESIS, config->hysteresis);
 
-            hysteresis = ((uint16_t)data_array[2] << 8);
+            hysteresis = ((uint16_t)any_mot_config[3] << 8);
 
             /* Set hysteresis for msb 8 bits */
-            hysteresis2 = BMI3_SET_BIT_POS0(hysteresis, BMI3_ANY_NO_HYSTERESIS, config->hysteresis);
+            any_mot_config[3] =
+                (BMI3_SET_BIT_POS0(hysteresis, BMI3_ANY_NO_HYSTERESIS,
+                                   config->hysteresis) & BMI3_ANY_NO_HYSTERESIS_MASK) >> 8;
 
             /* Set duration for lsb 8 bits */
-            duration1 = BMI3_SET_BIT_POS0(data_array[3], BMI3_ANY_NO_DURATION, config->duration);
+            any_mot_config[4] = (uint8_t)BMI3_SET_BIT_POS0(any_mot_config[4], BMI3_ANY_NO_DURATION, config->duration);
 
-            duration = ((uint16_t)data_array[4] << 8);
+            duration = ((uint16_t)any_mot_config[5] << 8);
 
             /* Set duration for msb 8 bits */
-            duration2 = BMI3_SET_BIT_POS0(duration, BMI3_ANY_NO_DURATION, config->duration);
+            any_mot_config[5] =
+                (BMI3_SET_BIT_POS0(duration, BMI3_ANY_NO_DURATION, config->duration) & BMI3_ANY_NO_DURATION_MASK) >> 8;
 
-            wait_time1 = ((uint16_t)data_array[5] << 8);
+            wait_time = ((uint16_t)any_mot_config[5] << 8);
 
             /* Set wait time */
-            wait_time = BMI3_SET_BITS(wait_time1, BMI3_ANY_NO_WAIT_TIME, config->wait_time);
+            any_mot_config[5] |=
+                (BMI3_SET_BITS(wait_time, BMI3_ANY_NO_WAIT_TIME, config->wait_time) & BMI3_ANY_NO_WAIT_TIME_MASK) >> 8;
 
-            any_mot_config[0] = (uint8_t)threshold1;
-            any_mot_config[1] = (uint8_t)((threshold2 | acc_ref_up) >> 8);
-            any_mot_config[2] = (uint8_t)(hysteresis1);
-            any_mot_config[3] = (uint8_t)((hysteresis2) >> 8);
-            any_mot_config[4] = (uint8_t)(duration1);
-            any_mot_config[5] = (uint8_t)((duration2 | wait_time) >> 8);
-
-            /* Set the configurations back to the feature engine register */
+            /* Set the configuration back to the feature engine register */
             rslt = bmi3_set_regs(BMI3_REG_FEATURE_DATA_TX, any_mot_config, 6, dev);
         }
     }
@@ -5614,19 +5522,7 @@ static int8_t set_no_motion_config(const struct bmi3_no_motion_config *config, s
     /* Array to define the feature configuration */
     uint8_t no_mot_config[6] = { 0 };
 
-    uint8_t data_array[6] = { 0 };
-
-    uint16_t duration1, duration2;
-
-    uint16_t threshold1, threshold2;
-
-    uint16_t hysteresis1, hysteresis2;
-
-    uint16_t threshold, hysteresis, duration, wait_time1;
-
-    uint16_t acc_ref_up;
-
-    uint16_t wait_time;
+    uint16_t threshold, acc_ref_up, hysteresis, duration, wait_time;
 
     if (config != NULL)
     {
@@ -5636,43 +5532,48 @@ static int8_t set_no_motion_config(const struct bmi3_no_motion_config *config, s
         if (rslt == BMI3_OK)
         {
             /* Set threshold for lsb 8 bits */
-            threshold1 = BMI3_SET_BIT_POS0(data_array[0], BMI3_ANY_NO_SLOPE_THRESHOLD, config->slope_thres);
+            no_mot_config[0] = (uint8_t)BMI3_SET_BIT_POS0(no_mot_config[0],
+                                                          BMI3_ANY_NO_SLOPE_THRESHOLD,
+                                                          config->slope_thres);
 
-            threshold = ((uint16_t)data_array[1] << 8);
+            threshold = ((uint16_t)no_mot_config[1] << 8);
 
             /* Set threshold for msb 8 bits */
-            threshold2 = BMI3_SET_BIT_POS0(threshold, BMI3_ANY_NO_SLOPE_THRESHOLD, config->slope_thres);
+            no_mot_config[1] =
+                (BMI3_SET_BIT_POS0(threshold, BMI3_ANY_NO_SLOPE_THRESHOLD,
+                                   config->slope_thres) & BMI3_ANY_NO_SLOPE_THRESHOLD_MASK) >> 8;
+
+            acc_ref_up = ((uint16_t)no_mot_config[1] << 8);
 
             /* Set accel reference */
-            acc_ref_up = BMI3_SET_BITS(threshold, BMI3_ANY_NO_ACC_REF_UP, config->acc_ref_up);
+            no_mot_config[1] |=
+                (BMI3_SET_BITS(acc_ref_up, BMI3_ANY_NO_ACC_REF_UP,
+                               config->acc_ref_up) & BMI3_ANY_NO_ACC_REF_UP_MASK) >> 8;
 
             /* Set hysteresis for lsb 8 bits */
-            hysteresis1 = BMI3_SET_BIT_POS0(data_array[2], BMI3_ANY_NO_HYSTERESIS, config->hysteresis);
+            no_mot_config[2] = (uint8_t)BMI3_SET_BIT_POS0(no_mot_config[2], BMI3_ANY_NO_HYSTERESIS, config->hysteresis);
 
-            hysteresis = ((uint16_t)data_array[2] << 8);
+            hysteresis = ((uint16_t)no_mot_config[3] << 8);
 
             /* Set hysteresis for msb 8 bits */
-            hysteresis2 = BMI3_SET_BIT_POS0(hysteresis, BMI3_ANY_NO_HYSTERESIS, config->hysteresis);
+            no_mot_config[3] =
+                (BMI3_SET_BIT_POS0(hysteresis, BMI3_ANY_NO_HYSTERESIS,
+                                   config->hysteresis) & BMI3_ANY_NO_HYSTERESIS_MASK) >> 8;
 
             /* Set duration for lsb 8 bits */
-            duration1 = BMI3_SET_BIT_POS0(data_array[3], BMI3_ANY_NO_DURATION, config->duration);
+            no_mot_config[4] = (uint8_t)BMI3_SET_BIT_POS0(no_mot_config[4], BMI3_ANY_NO_DURATION, config->duration);
 
-            duration = ((uint16_t)data_array[4] << 8);
+            duration = ((uint16_t)no_mot_config[5] << 8);
 
             /* Set duration for msb 8 bits */
-            duration2 = BMI3_SET_BIT_POS0(duration, BMI3_ANY_NO_DURATION, config->duration);
+            no_mot_config[5] =
+                (BMI3_SET_BIT_POS0(duration, BMI3_ANY_NO_DURATION, config->duration) & BMI3_ANY_NO_DURATION_MASK) >> 8;
 
-            wait_time1 = ((uint16_t)data_array[5] << 8);
+            wait_time = ((uint16_t)no_mot_config[5] << 8);
 
             /* Set wait time */
-            wait_time = BMI3_SET_BITS(wait_time1, BMI3_ANY_NO_WAIT_TIME, config->wait_time);
-
-            no_mot_config[0] = (uint8_t)threshold1;
-            no_mot_config[1] = (uint8_t)((threshold2 | acc_ref_up) >> 8);
-            no_mot_config[2] = (uint8_t)(hysteresis1);
-            no_mot_config[3] = (uint8_t)((hysteresis2) >> 8);
-            no_mot_config[4] = (uint8_t)(duration1);
-            no_mot_config[5] = (uint8_t)((duration2 | wait_time) >> 8);
+            no_mot_config[5] |=
+                (BMI3_SET_BITS(wait_time, BMI3_ANY_NO_WAIT_TIME, config->wait_time) & BMI3_ANY_NO_WAIT_TIME_MASK) >> 8;
 
             /* Set the configuration back to the feature engine register */
             rslt = bmi3_set_regs(BMI3_REG_FEATURE_DATA_TX, no_mot_config, 6, dev);
@@ -5775,7 +5676,7 @@ static int8_t set_flat_config(const struct bmi3_flat_config *config, struct bmi3
     /* Array to set the base address of flat feature */
     uint8_t base_addr[2] = { BMI3_BASE_ADDR_FLAT, 0 };
 
-    uint16_t theta, blocking, holdtime, slope_thres, hyst;
+    uint16_t holdtime, hyst;
 
     if (config != NULL)
     {
@@ -5785,26 +5686,22 @@ static int8_t set_flat_config(const struct bmi3_flat_config *config, struct bmi3
         if (rslt == BMI3_OK)
         {
             /* Set theta */
-            theta = BMI3_SET_BIT_POS0(flat_config[0], BMI3_FLAT_THETA, config->theta);
+            flat_config[0] = BMI3_SET_BIT_POS0(flat_config[0], BMI3_FLAT_THETA, config->theta);
 
             /* Set blocking */
-            blocking = BMI3_SET_BITS(flat_config[0], BMI3_FLAT_BLOCKING, config->blocking);
+            flat_config[0] |= BMI3_SET_BITS(flat_config[0], BMI3_FLAT_BLOCKING, config->blocking);
 
             /* Set hold time */
             holdtime = ((uint16_t)flat_config[1] << 8);
-            holdtime = BMI3_SET_BITS(holdtime, BMI3_FLAT_HOLD_TIME, config->hold_time);
+            flat_config[1] =
+                (BMI3_SET_BITS(holdtime, BMI3_FLAT_HOLD_TIME, config->hold_time) & BMI3_FLAT_HOLD_TIME_MASK) >> 8;
 
             /* Set slope threshold */
-            slope_thres = BMI3_SET_BIT_POS0(flat_config[2], BMI3_FLAT_SLOPE_THRES, config->slope_thres);
+            flat_config[2] = BMI3_SET_BIT_POS0(flat_config[2], BMI3_FLAT_SLOPE_THRES, config->slope_thres);
 
             /* Set hysteresis */
             hyst = ((uint16_t)flat_config[3] << 8);
-            hyst = BMI3_SET_BITS(hyst, BMI3_FLAT_HYST, config->hysteresis);
-
-            flat_config[0] = (uint8_t)(theta | blocking);
-            flat_config[1] = (uint8_t)(holdtime >> 8);
-            flat_config[2] = (uint8_t)(slope_thres);
-            flat_config[3] = (uint8_t)(hyst >> 8);
+            flat_config[3] = (BMI3_SET_BITS(hyst, BMI3_FLAT_HYST, config->hysteresis) & BMI3_FLAT_HYST_MASK) >> 8;
 
             /* Set the configuration back to the feature engine register */
             rslt = bmi3_set_regs(BMI3_REG_FEATURE_DATA_TX, flat_config, 4, dev);
@@ -5912,70 +5809,83 @@ static int8_t set_sig_motion_config(const struct bmi3_sig_motion_config *config,
     /* Array to define the feature configuration */
     uint8_t sig_mot_config[6] = { 0 };
 
-    uint8_t data_array[6] = { 0 };
+    struct bmi3_accel_config acc_config = { 0 };
 
-    uint16_t block_size1, block_size2;
-
-    uint16_t p2p_min1, p2p_min2;
-
-    uint16_t p2p_max1, p2p_max2;
-
-    uint16_t block_size, p2p_min, p2p_max;
-
-    uint16_t mcr_min;
-
-    uint16_t mcr_max;
+    uint16_t block_size, p2p_min, mcr_min, p2p_max, mcr_max;
 
     if (config != NULL)
     {
-        /* Set the sig-motion base address to feature engine transmission address to start DMA transaction */
-        rslt = bmi3_set_regs(BMI3_REG_FEATURE_DATA_ADDR, base_addr, 2, dev);
+        rslt = get_accel_config(&acc_config, dev);
+
+        if ((rslt == BMI3_OK) && (acc_config.acc_mode == BMI3_ACC_MODE_LOW_PWR))
+        {
+            if (acc_config.odr >= BMI3_ACC_ODR_50HZ)
+            {
+                rslt = BMI3_OK;
+            }
+            else
+            {
+                rslt = BMI3_E_ACC_INVALID_CFG;
+            }
+        }
 
         if (rslt == BMI3_OK)
         {
-            /* Set block size for lsb 8 bits */
-            block_size1 = BMI3_SET_BIT_POS0(data_array[0], BMI3_SIG_BLOCK_SIZE, config->block_size);
+            /* Set the sig-motion base address to feature engine transmission address to start DMA transaction */
+            rslt = bmi3_set_regs(BMI3_REG_FEATURE_DATA_ADDR, base_addr, 2, dev);
 
-            block_size = ((uint16_t)data_array[1] << 8);
+            if (rslt == BMI3_OK)
+            {
+                /* Set block size for lsb 8 bits */
+                sig_mot_config[0] = (uint8_t)BMI3_SET_BIT_POS0(sig_mot_config[0],
+                                                               BMI3_SIG_BLOCK_SIZE,
+                                                               config->block_size);
 
-            /* Set block size for msb 8 bits */
-            block_size2 = BMI3_SET_BIT_POS0(block_size, BMI3_SIG_BLOCK_SIZE, config->block_size);
+                block_size = ((uint16_t)sig_mot_config[1] << 8);
 
-            /* Set peak to peak minimum for lsb 8 bits */
-            p2p_min1 = BMI3_SET_BIT_POS0(data_array[2], BMI3_SIG_P2P_MIN, config->peak_2_peak_min);
+                /* Set block size for msb 8 bits */
+                sig_mot_config[1] =
+                    (BMI3_SET_BIT_POS0(block_size, BMI3_SIG_BLOCK_SIZE,
+                                       config->block_size) & BMI3_SIG_BLOCK_SIZE_MASK) >> 8;
 
-            p2p_min = ((uint16_t)data_array[3] << 8);
+                /* Set peak to peak minimum for lsb 8 bits */
+                sig_mot_config[2] = (uint8_t)BMI3_SET_BIT_POS0(sig_mot_config[2],
+                                                               BMI3_SIG_P2P_MIN,
+                                                               config->peak_2_peak_min);
 
-            /* Set peak to peak minimum for msb 8 bits */
-            p2p_min2 = BMI3_SET_BIT_POS0(p2p_min, BMI3_SIG_P2P_MIN, config->peak_2_peak_min);
+                p2p_min = ((uint16_t)sig_mot_config[3] << 8);
 
-            mcr_min = ((uint16_t)data_array[3] << 8);
+                /* Set peak to peak minimum for msb 8 bits */
+                sig_mot_config[3] =
+                    (BMI3_SET_BIT_POS0(p2p_min, BMI3_SIG_P2P_MIN,
+                                       config->peak_2_peak_min) & BMI3_SIG_P2P_MIN_MASK) >> 8;
 
-            /* Set mcr minimum */
-            mcr_min = BMI3_SET_BITS(mcr_min, BMI3_SIG_MCR_MIN, config->mcr_min);
+                mcr_min = ((uint16_t)sig_mot_config[3] << 8);
 
-            /* Set peak to peak maximum for lsb 8 bits */
-            p2p_max1 = BMI3_SET_BIT_POS0(data_array[4], BMI3_SIG_P2P_MAX, config->peak_2_peak_max);
+                /* Set mcr minimum */
+                sig_mot_config[3] |=
+                    (BMI3_SET_BITS(mcr_min, BMI3_SIG_MCR_MIN, config->mcr_min) & BMI3_SIG_MCR_MIN_MASK) >> 8;
 
-            p2p_max = ((uint16_t)data_array[5] << 8);
+                /* Set peak to peak maximum for lsb 8 bits */
+                sig_mot_config[4] = (uint8_t)BMI3_SET_BIT_POS0(sig_mot_config[4],
+                                                               BMI3_SIG_P2P_MAX,
+                                                               config->peak_2_peak_max);
 
-            /* Set peak to peak maximum for msb 8 bits */
-            p2p_max2 = BMI3_SET_BIT_POS0(p2p_max, BMI3_SIG_P2P_MAX, config->peak_2_peak_max);
+                p2p_max = ((uint16_t)sig_mot_config[5] << 8);
 
-            mcr_max = ((uint16_t)data_array[5] << 8);
+                /* Set peak to peak maximum for msb 8 bits */
+                sig_mot_config[5] =
+                    (BMI3_SET_BIT_POS0(p2p_max, BMI3_SIG_P2P_MAX,
+                                       config->peak_2_peak_max) & BMI3_SIG_P2P_MAX_MASK) >> 8;
 
-            /* Set mcr maximum */
-            mcr_max = BMI3_SET_BITS(mcr_max, BMI3_MCR_MAX, config->mcr_max);
+                mcr_max = ((uint16_t)sig_mot_config[5] << 8);
 
-            sig_mot_config[0] = (uint8_t)(block_size1);
-            sig_mot_config[1] = (uint8_t)(block_size2 >> 8);
-            sig_mot_config[2] = (uint8_t)(p2p_min1);
-            sig_mot_config[3] = (uint8_t)((p2p_min2 | mcr_min) >> 8);
-            sig_mot_config[4] = (uint8_t)(p2p_max1);
-            sig_mot_config[5] = (uint8_t)((p2p_max2 | mcr_max) >> 8);
+                /* Set mcr maximum */
+                sig_mot_config[5] |= (BMI3_SET_BITS(mcr_max, BMI3_MCR_MAX, config->mcr_max) & BMI3_MCR_MAX_MASK) >> 8;
 
-            /* Set the configuration back to the feature engine register */
-            rslt = bmi3_set_regs(BMI3_REG_FEATURE_DATA_TX, sig_mot_config, 6, dev);
+                /* Set the configuration back to the feature engine register */
+                rslt = bmi3_set_regs(BMI3_REG_FEATURE_DATA_TX, sig_mot_config, 6, dev);
+            }
         }
     }
     else
@@ -6069,15 +5979,7 @@ static int8_t set_tilt_config(const struct bmi3_tilt_config *config, struct bmi3
     /* Array to define the feature configuration */
     uint8_t tilt_config[4] = { 0 };
 
-    uint8_t data_array[4] = { 0 };
-
-    uint16_t min_tilt_angle1;
-
-    uint16_t beta_acc_mean1, beta_acc_mean2;
-
     uint16_t min_tilt_angle, beta_acc_mean;
-
-    uint16_t segment_size;
 
     if (config != NULL)
     {
@@ -6087,25 +5989,24 @@ static int8_t set_tilt_config(const struct bmi3_tilt_config *config, struct bmi3
         if (rslt == BMI3_OK)
         {
             /* Set segment size */
-            segment_size = BMI3_SET_BIT_POS0(data_array[0], BMI3_TILT_SEGMENT_SIZE, config->segment_size);
+            tilt_config[0] = BMI3_SET_BIT_POS0(tilt_config[0], BMI3_TILT_SEGMENT_SIZE, config->segment_size);
 
-            min_tilt_angle1 = ((uint16_t)data_array[1] << 8);
+            min_tilt_angle = ((uint16_t)tilt_config[1] << 8);
 
             /* Set minimum tilt angle */
-            min_tilt_angle = BMI3_SET_BITS(min_tilt_angle1, BMI3_TILT_MIN_TILT_ANGLE, config->min_tilt_angle);
+            tilt_config[1] =
+                (BMI3_SET_BITS(min_tilt_angle, BMI3_TILT_MIN_TILT_ANGLE,
+                               config->min_tilt_angle) & BMI3_TILT_MIN_TILT_ANGLE_MASK) >> 8;
 
             /* Set beta accel mean for lsb 8 bits */
-            beta_acc_mean1 = BMI3_SET_BIT_POS0(data_array[2], BMI3_TILT_BETA_ACC_MEAN, config->beta_acc_mean);
+            tilt_config[2] = (uint8_t)BMI3_SET_BIT_POS0(tilt_config[2], BMI3_TILT_BETA_ACC_MEAN, config->beta_acc_mean);
 
-            beta_acc_mean = ((uint16_t)data_array[3] << 8);
+            beta_acc_mean = ((uint16_t)tilt_config[3] << 8);
 
             /* Set beta accel mean for msb 8 bits */
-            beta_acc_mean2 = BMI3_SET_BIT_POS0(beta_acc_mean, BMI3_TILT_BETA_ACC_MEAN, config->beta_acc_mean);
-
-            tilt_config[0] = (uint8_t)segment_size;
-            tilt_config[1] = (uint8_t)(min_tilt_angle >> 8);
-            tilt_config[2] = (uint8_t)(beta_acc_mean1);
-            tilt_config[3] = (uint8_t)(beta_acc_mean2 >> 8);
+            tilt_config[3] =
+                (BMI3_SET_BIT_POS0(beta_acc_mean, BMI3_TILT_BETA_ACC_MEAN,
+                                   config->beta_acc_mean) & BMI3_TILT_BETA_ACC_MEAN_MASK) >> 8;
 
             /* Set the configuration back to the feature engine register */
             rslt = bmi3_set_regs(BMI3_REG_FEATURE_DATA_TX, tilt_config, 4, dev);
@@ -6215,7 +6116,7 @@ static int8_t set_orientation_config(const struct bmi3_orientation_config *confi
     /* Array to set the base address of orient feature */
     uint8_t base_aadr[2] = { BMI3_BASE_ADDR_ORIENT, 0 };
 
-    uint16_t ud_en, mode, blocking, theta, theta1, holdtime, slope_thres, hyst;
+    uint16_t theta, hysteresis;
 
     if (config != NULL)
     {
@@ -6225,35 +6126,35 @@ static int8_t set_orientation_config(const struct bmi3_orientation_config *confi
         if (rslt == BMI3_OK)
         {
             /* Set upside down bit */
-            ud_en = BMI3_SET_BIT_POS0(orient_config[0], BMI3_ORIENT_UD_EN, config->ud_en);
+            orient_config[0] = BMI3_SET_BIT_POS0(orient_config[0], BMI3_ORIENT_UD_EN, config->ud_en);
 
             /* Set mode */
-            mode = BMI3_SET_BITS(orient_config[0], BMI3_ORIENT_MODE, config->mode);
+            orient_config[0] |= BMI3_SET_BITS(orient_config[0], BMI3_ORIENT_MODE, config->mode);
 
             /* Set blocking */
-            blocking = BMI3_SET_BITS(orient_config[0], BMI3_ORIENT_BLOCKING, config->blocking);
+            orient_config[0] |= BMI3_SET_BITS(orient_config[0], BMI3_ORIENT_BLOCKING, config->blocking);
 
             /* Set theta for lsb 8 bits */
-            theta1 = BMI3_SET_BITS(orient_config[0], BMI3_ORIENT_THETA, config->theta);
+            orient_config[0] |= (uint8_t)BMI3_SET_BITS(orient_config[0], BMI3_ORIENT_THETA, config->theta);
 
             theta = ((uint16_t)orient_config[1] << 8);
 
             /* Set theta for msb 8 bits */
-            theta = BMI3_SET_BITS(theta, BMI3_ORIENT_THETA, config->theta);
+            orient_config[1] = (BMI3_SET_BITS(theta, BMI3_ORIENT_THETA, config->theta) & BMI3_ORIENT_THETA_MASK) >> 8;
 
             /* Set hold time */
-            holdtime = BMI3_SET_BITS(orient_config[1], BMI3_ORIENT_HOLD_TIME, config->hold_time);
+            orient_config[1] |=
+                (BMI3_SET_BITS(orient_config[1], BMI3_ORIENT_HOLD_TIME,
+                               config->hold_time) & BMI3_ORIENT_HOLD_TIME_MASK) >> 8;
 
             /* Set slope threshold */
-            slope_thres = BMI3_SET_BIT_POS0(orient_config[2], BMI3_ORIENT_SLOPE_THRES, config->slope_thres);
+            orient_config[2] = BMI3_SET_BIT_POS0(orient_config[2], BMI3_ORIENT_SLOPE_THRES, config->slope_thres);
+
+            hysteresis = ((uint16_t)orient_config[3] << 8);
 
             /* Set hysteresis */
-            hyst = BMI3_SET_BITS(orient_config[3], BMI3_ORIENT_HYST, config->hysteresis);
-
-            orient_config[0] = (uint8_t)(ud_en | mode | blocking | theta1);
-            orient_config[1] = (uint8_t)((theta | holdtime) >> 8);
-            orient_config[2] = (uint8_t)(slope_thres);
-            orient_config[3] = (uint8_t)(hyst >> 8);
+            orient_config[3] =
+                (BMI3_SET_BITS(hysteresis, BMI3_ORIENT_HYST, config->hysteresis) & BMI3_ORIENT_HYST_MASK) >> 8;
 
             /* Set the configuration back to the feature engine register */
             rslt = bmi3_set_regs(BMI3_REG_FEATURE_DATA_TX, orient_config, 4, dev);
@@ -6269,7 +6170,7 @@ static int8_t set_orientation_config(const struct bmi3_orientation_config *confi
 
 /*!
  * @brief This internal API gets step counter configurations like water-mark level,
- * reset counter, step counter parameters and sc_12_res.
+ * reset counter and step counter parameters.
  */
 static int8_t get_step_config(struct bmi3_step_counter_config *config, struct bmi3_dev *dev)
 {
@@ -6420,7 +6321,7 @@ static int8_t get_step_config(struct bmi3_step_counter_config *config, struct bm
                                                BMI3_STEP_DURATION_WINDOW_POS;
 
                 /* Get word to calculate step duration pp enabled, duration threshold,
-                 * mean crossing pp enabled, mcr threshold, sc_12_res from the same word */
+                 * mean crossing pp enabled, mcr threshold from the same word */
                 lsb = ((uint16_t)step_config[idx++]);
                 msb = ((uint16_t)step_config[idx++]);
                 lsb_msb = (uint16_t)(lsb | (msb << 8));
@@ -6438,9 +6339,6 @@ static int8_t get_step_config(struct bmi3_step_counter_config *config, struct bm
 
                 /* Get mcr threshold */
                 config->mcr_threshold = (lsb_msb & BMI3_STEP_MCR_THRESHOLD_MASK) >> BMI3_STEP_MCR_THRESHOLD_POS;
-
-                /* Get sc_12_res selection */
-                config->sc_12_res = (lsb_msb & BMI3_STEP_SC_12_RES_MASK) >> BMI3_STEP_SC_12_RES_POS;
             }
         }
     }
@@ -6454,7 +6352,7 @@ static int8_t get_step_config(struct bmi3_step_counter_config *config, struct bm
 
 /*!
  * @brief This internal API sets step counter configurations like water-mark level,
- * reset counter, step counter parameters and sc_12_res.
+ * reset counter and step counter parameters.
  */
 static int8_t set_step_config(const struct bmi3_step_counter_config *config, struct bmi3_dev *dev)
 {
@@ -6467,211 +6365,210 @@ static int8_t set_step_config(const struct bmi3_step_counter_config *config, str
     /* Array to define the feature configuration */
     uint8_t step_config[24] = { 0 };
 
-    uint8_t data_array[24] = { 0 };
+    struct bmi3_accel_config acc_config = { 0 };
 
-    uint16_t watermark1, watermark2, activity_detection_threshold1, activity_detection_threshold2;
-
-    uint16_t env_min_dist_up1, env_min_dist_up2, env_coef_down1, env_coef_down2;
-
-    uint16_t env_coef_up1, env_coef_up2, mean_val_decay1, mean_val_decay2, step_counter_increment1,
-             step_counter_increment2;
-
-    uint16_t mean_step_dur1, mean_step_dur2, env_min_dist_down1, env_min_dist_down2;
-
-    uint16_t step_buffer_size, filter_cascade_enabled, peak_duration_min_walking, peak_duration_min_running;
-
-    uint16_t watermark, env_min_dist_up, env_coef_up, env_min_dist_down, env_coef_down, mean_val_decay;
-
-    uint16_t mean_step_dur, activity_detection_threshold, mcr_threshold;
-
-    uint16_t reset_counter, activity_detection_factor, step_duration_max, step_duration_window,
-             step_duration_pp_enabled;
-
-    uint16_t step_duration_threshold, mean_crossing_pp_enabled, mcr_threshold1, mcr_threshold2, sc_12_res;
+    uint16_t watermark, reset_counter, env_min_dist_up, env_coef_up, env_min_dist_down, env_coef_down;
+    uint16_t mean_val_decay, mean_step_dur, step_counter_increment, peak_duration_min_running;
+    uint16_t activity_detection_threshold, step_duration_window, mcr_threshold;
 
     if (config != NULL)
     {
-        /* Set the step counter base address to feature engine transmission address to start DMA transaction */
-        rslt = bmi3_set_regs(BMI3_REG_FEATURE_DATA_ADDR, base_addr, 2, dev);
+        rslt = get_accel_config(&acc_config, dev);
+
+        if ((rslt == BMI3_OK) && (acc_config.acc_mode == BMI3_ACC_MODE_LOW_PWR))
+        {
+            if (acc_config.odr >= BMI3_ACC_ODR_50HZ)
+            {
+                rslt = BMI3_OK;
+            }
+            else
+            {
+                rslt = BMI3_E_ACC_INVALID_CFG;
+            }
+        }
 
         if (rslt == BMI3_OK)
         {
-            /* Set water-mark for lsb 8 bits */
-            watermark1 = BMI3_SET_BIT_POS0(data_array[0], BMI3_STEP_WATERMARK, config->watermark_level);
+            /* Set the step counter base address to feature engine transmission address to start DMA transaction */
+            rslt = bmi3_set_regs(BMI3_REG_FEATURE_DATA_ADDR, base_addr, 2, dev);
 
-            watermark = ((uint16_t)data_array[1] << 8);
+            if (rslt == BMI3_OK)
+            {
+                /* Set water-mark for lsb 8 bits */
+                step_config[0] =
+                    (uint8_t)BMI3_SET_BIT_POS0(step_config[0], BMI3_STEP_WATERMARK, config->watermark_level);
 
-            /* Set water-mark for msb 8 bits */
-            watermark2 = BMI3_SET_BIT_POS0(watermark, BMI3_STEP_WATERMARK, config->watermark_level);
+                watermark = ((uint16_t)step_config[1] << 8);
 
-            reset_counter = ((uint16_t)data_array[1] << 8);
+                /* Set water-mark for msb 8 bits */
+                step_config[1] =
+                    (BMI3_SET_BIT_POS0(watermark, BMI3_STEP_WATERMARK,
+                                       config->watermark_level) & BMI3_STEP_WATERMARK_MASK) >> 8;
 
-            /* Set reset counter */
-            reset_counter = BMI3_SET_BITS(reset_counter, BMI3_STEP_RESET_COUNTER, config->reset_counter);
+                reset_counter = ((uint16_t)step_config[1] << 8);
 
-            /* Set env_min_dist_up for lsb 8 bits */
-            env_min_dist_up1 = BMI3_SET_BIT_POS0(data_array[2], BMI3_STEP_ENV_MIN_DIST_UP, config->env_min_dist_up);
+                /* Set reset counter */
+                step_config[1] |=
+                    (BMI3_SET_BITS(reset_counter, BMI3_STEP_RESET_COUNTER,
+                                   config->reset_counter) & BMI3_STEP_RESET_COUNTER_MASK) >> 8;
 
-            env_min_dist_up = ((uint16_t)data_array[3] << 8);
+                /* Set env_min_dist_up for lsb 8 bits */
+                step_config[2] = (uint8_t)BMI3_SET_BIT_POS0(step_config[2],
+                                                            BMI3_STEP_ENV_MIN_DIST_UP,
+                                                            config->env_min_dist_up);
 
-            /* Set env_min_dist_up for msb 8 bits */
-            env_min_dist_up2 = BMI3_SET_BIT_POS0(env_min_dist_up, BMI3_STEP_ENV_MIN_DIST_UP, config->env_min_dist_up);
+                env_min_dist_up = ((uint16_t)step_config[3] << 8);
 
-            /* Set env_coef_up for lsb 8 bits */
-            env_coef_up1 = BMI3_SET_BIT_POS0(data_array[4], BMI3_STEP_ENV_COEF_UP, config->env_coef_up);
+                /* Set env_min_dist_up for msb 8 bits */
+                step_config[3] =
+                    (BMI3_SET_BIT_POS0(env_min_dist_up, BMI3_STEP_ENV_MIN_DIST_UP,
+                                       config->env_min_dist_up) & BMI3_STEP_ENV_MIN_DIST_UP_MASK) >> 8;
 
-            env_coef_up = ((uint16_t)data_array[5] << 8);
+                /* Set env_coef_up for lsb 8 bits */
+                step_config[4] = (uint8_t)BMI3_SET_BIT_POS0(step_config[4], BMI3_STEP_ENV_COEF_UP, config->env_coef_up);
 
-            /* Set env_coef_up for msb 8 bits */
-            env_coef_up2 = BMI3_SET_BIT_POS0(env_coef_up, BMI3_STEP_ENV_COEF_UP, config->env_coef_up);
+                env_coef_up = ((uint16_t)step_config[5] << 8);
 
-            /* Set env_min_dist_down for lsb 8 bits */
-            env_min_dist_down1 =
-                BMI3_SET_BIT_POS0(data_array[6], BMI3_STEP_ENV_MIN_DIST_DOWN, config->env_min_dist_down);
+                /* Set env_coef_up for msb 8 bits */
+                step_config[5] =
+                    (BMI3_SET_BIT_POS0(env_coef_up, BMI3_STEP_ENV_COEF_UP,
+                                       config->env_coef_up) & BMI3_STEP_ENV_COEF_UP_MASK) >> 8;
 
-            env_min_dist_down = ((uint16_t)data_array[7] << 8);
+                /* Set env_min_dist_down for lsb 8 bits */
+                step_config[6] = (uint8_t)BMI3_SET_BIT_POS0(step_config[6],
+                                                            BMI3_STEP_ENV_MIN_DIST_DOWN,
+                                                            config->env_min_dist_down);
 
-            /* Set env_min_dist_down for msb 8 bits */
-            env_min_dist_down2 = BMI3_SET_BIT_POS0(env_min_dist_down,
-                                                   BMI3_STEP_ENV_MIN_DIST_DOWN,
-                                                   config->env_min_dist_down);
+                env_min_dist_down = ((uint16_t)step_config[7] << 8);
 
-            /* Set env_coef_down for lsb 8 bits */
-            env_coef_down1 = BMI3_SET_BIT_POS0(data_array[8], BMI3_STEP_ENV_COEF_DOWN, config->env_coef_down);
+                /* Set env_min_dist_down for msb 8 bits */
+                step_config[7] =
+                    (BMI3_SET_BIT_POS0(env_min_dist_down, BMI3_STEP_ENV_MIN_DIST_DOWN,
+                                       config->env_min_dist_down) & BMI3_STEP_ENV_MIN_DIST_DOWN_MASK) >> 8;
 
-            env_coef_down = ((uint16_t)data_array[9] << 8);
+                /* Set env_coef_down for lsb 8 bits */
+                step_config[8] = (uint8_t)BMI3_SET_BIT_POS0(step_config[8],
+                                                            BMI3_STEP_ENV_COEF_DOWN,
+                                                            config->env_coef_down);
 
-            /* Set env_coef_down for msb 8 bits */
-            env_coef_down2 = BMI3_SET_BIT_POS0(env_coef_down, BMI3_STEP_ENV_COEF_DOWN, config->env_coef_down);
+                env_coef_down = ((uint16_t)step_config[9] << 8);
 
-            /* Set mean_val_decay for lsb 8 bits */
-            mean_val_decay1 = BMI3_SET_BIT_POS0(data_array[10], BMI3_STEP_MEAN_VAL_DECAY, config->mean_val_decay);
+                /* Set env_coef_down for msb 8 bits */
+                step_config[9] =
+                    (BMI3_SET_BIT_POS0(env_coef_down, BMI3_STEP_ENV_COEF_DOWN,
+                                       config->env_coef_down) & BMI3_STEP_ENV_COEF_DOWN_MASK) >> 8;
 
-            mean_val_decay = ((uint16_t)data_array[11] << 8);
+                /* Set mean_val_decay for lsb 8 bits */
+                step_config[10] = (uint8_t)BMI3_SET_BIT_POS0(step_config[10],
+                                                             BMI3_STEP_MEAN_VAL_DECAY,
+                                                             config->mean_val_decay);
 
-            /* Set mean_val_decay for msb 8 bits */
-            mean_val_decay2 = BMI3_SET_BIT_POS0(mean_val_decay, BMI3_STEP_MEAN_VAL_DECAY, config->mean_val_decay);
+                mean_val_decay = ((uint16_t)step_config[11] << 8);
 
-            /* Set mean_step_dur for lsb 8 bits */
-            mean_step_dur1 = BMI3_SET_BIT_POS0(data_array[12], BMI3_STEP_MEAN_STEP_DUR, config->mean_step_dur);
+                /* Set mean_val_decay for msb 8 bits */
+                step_config[11] =
+                    (BMI3_SET_BIT_POS0(mean_val_decay, BMI3_STEP_MEAN_VAL_DECAY,
+                                       config->mean_val_decay) & BMI3_STEP_MEAN_VAL_DECAY_MASK) >> 8;
 
-            mean_step_dur = ((uint16_t)data_array[13] << 8);
+                /* Set mean_step_dur for lsb 8 bits */
+                step_config[12] = (uint8_t)BMI3_SET_BIT_POS0(step_config[12],
+                                                             BMI3_STEP_MEAN_STEP_DUR,
+                                                             config->mean_step_dur);
 
-            /* Set mean_step_dur for msb 8 bits */
-            mean_step_dur2 = BMI3_SET_BIT_POS0(mean_step_dur, BMI3_STEP_MEAN_STEP_DUR, config->mean_step_dur);
+                mean_step_dur = ((uint16_t)step_config[13] << 8);
 
-            /* Set step buffer size */
-            step_buffer_size = BMI3_SET_BIT_POS0(data_array[14], BMI3_STEP_BUFFER_SIZE, config->step_buffer_size);
+                /* Set mean_step_dur for msb 8 bits */
+                step_config[13] =
+                    (BMI3_SET_BIT_POS0(mean_step_dur, BMI3_STEP_MEAN_STEP_DUR,
+                                       config->mean_step_dur) & BMI3_STEP_MEAN_STEP_DUR_MASK) >> 8;
 
-            /* Set filter cascade */
-            filter_cascade_enabled = BMI3_SET_BITS(data_array[14],
-                                                   BMI3_STEP_FILTER_CASCADE_ENABLED,
-                                                   config->filter_cascade_enabled);
+                /* Set step buffer size */
+                step_config[14] = BMI3_SET_BIT_POS0(step_config[14], BMI3_STEP_BUFFER_SIZE, config->step_buffer_size);
 
-            /* Set step_counter_increment for lsb 8 bits */
-            step_counter_increment1 = BMI3_SET_BITS(data_array[14],
-                                                    BMI3_STEP_COUNTER_INCREMENT,
-                                                    config->step_counter_increment);
+                /* Set filter cascade */
+                step_config[14] |= BMI3_SET_BITS(step_config[14],
+                                                 BMI3_STEP_FILTER_CASCADE_ENABLED,
+                                                 config->filter_cascade_enabled);
 
-            step_counter_increment2 = ((uint16_t)data_array[15] << 8);
+                /* Set step_counter_increment for lsb 8 bits */
+                step_config[14] |= (uint8_t)BMI3_SET_BITS(step_config[14],
+                                                          BMI3_STEP_COUNTER_INCREMENT,
+                                                          config->step_counter_increment);
 
-            /* Set step_counter_increment for msb 8 bits */
-            step_counter_increment2 = BMI3_SET_BITS(step_counter_increment2,
-                                                    BMI3_STEP_COUNTER_INCREMENT,
-                                                    config->step_counter_increment);
+                step_counter_increment = ((uint16_t)step_config[15] << 8);
 
-            /* Set peak_duration_min_walking for lsb 8 bits */
-            peak_duration_min_walking = BMI3_SET_BIT_POS0(data_array[16],
-                                                          BMI3_STEP_PEAK_DURATION_MIN_WALKING,
-                                                          config->peak_duration_min_walking);
+                /* Set step_counter_increment for msb 8 bits */
+                step_config[15] =
+                    (BMI3_SET_BITS(step_counter_increment, BMI3_STEP_COUNTER_INCREMENT,
+                                   config->step_counter_increment) & BMI3_STEP_COUNTER_INCREMENT_MASK) >> 8;
 
-            peak_duration_min_running = ((uint16_t)data_array[17] << 8);
+                /* Set peak_duration_min_walking for lsb 8 bits */
+                step_config[16] = BMI3_SET_BIT_POS0(step_config[16],
+                                                    BMI3_STEP_PEAK_DURATION_MIN_WALKING,
+                                                    config->peak_duration_min_walking);
 
-            /* Set peak_duration_min_walking for msb 8 bits */
-            peak_duration_min_running = BMI3_SET_BITS(peak_duration_min_running,
-                                                      BMI3_STEP_PEAK_DURATION_MIN_RUNNING,
-                                                      config->peak_duration_min_running);
+                peak_duration_min_running = ((uint16_t)step_config[17] << 8);
 
-            /* Set activity detection fsctor */
-            activity_detection_factor = BMI3_SET_BIT_POS0(data_array[18],
-                                                          BMI3_STEP_ACTIVITY_DETECTION_FACTOR,
-                                                          config->activity_detection_factor);
+                /* Set peak_duration_min_walking for msb 8 bits */
+                step_config[17] =
+                    (BMI3_SET_BITS(peak_duration_min_running, BMI3_STEP_PEAK_DURATION_MIN_RUNNING,
+                                   config->peak_duration_min_running) & BMI3_STEP_PEAK_DURATION_MIN_RUNNING_MASK) >> 8;
 
-            /* Set activity_detection_threshold for lsb 8 bits */
-            activity_detection_threshold1 = BMI3_SET_BITS(data_array[18],
+                /* Set activity detection fsctor */
+                step_config[18] = BMI3_SET_BIT_POS0(step_config[18],
+                                                    BMI3_STEP_ACTIVITY_DETECTION_FACTOR,
+                                                    config->activity_detection_factor);
+
+                /* Set activity_detection_threshold for lsb 8 bits */
+                step_config[18] |= (uint8_t)BMI3_SET_BITS(step_config[18],
                                                           BMI3_STEP_ACTIVITY_DETECTION_THRESHOLD,
                                                           config->activity_detection_thres);
 
-            activity_detection_threshold = ((uint16_t)data_array[19] << 8);
+                activity_detection_threshold = ((uint16_t)step_config[19] << 8);
 
-            /* Set activity_detection_threshold for msb 8 bits */
-            activity_detection_threshold2 = BMI3_SET_BITS(activity_detection_threshold,
-                                                          BMI3_STEP_ACTIVITY_DETECTION_THRESHOLD,
-                                                          config->activity_detection_thres);
+                /* Set activity_detection_threshold for msb 8 bits */
+                step_config[19] =
+                    (BMI3_SET_BITS(activity_detection_threshold, BMI3_STEP_ACTIVITY_DETECTION_THRESHOLD,
+                                   config->activity_detection_thres) & BMI3_STEP_ACTIVITY_DETECTION_THRESHOLD_MASK) >>
+                    8;
 
-            /* Set maximum step duration */
-            step_duration_max = BMI3_SET_BIT_POS0(data_array[20], BMI3_STEP_DURATION_MAX, config->step_duration_max);
+                /* Set maximum step duration */
+                step_config[20] = BMI3_SET_BIT_POS0(step_config[20], BMI3_STEP_DURATION_MAX, config->step_duration_max);
 
-            step_duration_window = ((uint16_t)data_array[21] << 8);
+                step_duration_window = ((uint16_t)step_config[21] << 8);
 
-            /* Set step duration window */
-            step_duration_window = BMI3_SET_BITS(step_duration_window,
-                                                 BMI3_STEP_DURATION_WINDOW,
-                                                 config->step_duration_window);
+                /* Set step duration window */
+                step_config[21] =
+                    (BMI3_SET_BITS(step_duration_window, BMI3_STEP_DURATION_WINDOW,
+                                   config->step_duration_window) & BMI3_STEP_DURATION_WINDOW_MASK) >> 8;
 
-            step_duration_pp_enabled = BMI3_SET_BIT_POS0(data_array[22],
-                                                         BMI3_STEP_DURATION_PP_ENABLED,
-                                                         config->step_duration_pp_enabled);
+                step_config[22] = BMI3_SET_BIT_POS0(step_config[22],
+                                                    BMI3_STEP_DURATION_PP_ENABLED,
+                                                    config->step_duration_pp_enabled);
 
-            step_duration_threshold = BMI3_SET_BITS(data_array[22],
-                                                    BMI3_STEP_DURATION_THRESHOLD,
-                                                    config->step_duration_thres);
+                step_config[22] |= BMI3_SET_BITS(step_config[22],
+                                                 BMI3_STEP_DURATION_THRESHOLD,
+                                                 config->step_duration_thres);
 
-            mean_crossing_pp_enabled = BMI3_SET_BITS(data_array[22],
-                                                     BMI3_STEP_MEAN_CROSSING_PP_ENABLED,
-                                                     config->mean_crossing_pp_enabled);
+                step_config[22] |= BMI3_SET_BITS(step_config[22],
+                                                 BMI3_STEP_MEAN_CROSSING_PP_ENABLED,
+                                                 config->mean_crossing_pp_enabled);
 
-            /* Set mcr_threshold for lsb 8 bits */
-            mcr_threshold1 = BMI3_SET_BITS(data_array[22], BMI3_STEP_MCR_THRESHOLD, config->mcr_threshold);
+                /* Set mcr_threshold for lsb 8 bits */
+                step_config[22] |= (uint8_t)BMI3_SET_BITS(step_config[22],
+                                                          BMI3_STEP_MCR_THRESHOLD,
+                                                          config->mcr_threshold);
 
-            mcr_threshold = ((uint16_t)data_array[23] << 8);
+                mcr_threshold = ((uint16_t)step_config[23] << 8);
 
-            /* Set mcr_threshold for msb 8 bits */
-            mcr_threshold2 = BMI3_SET_BITS(mcr_threshold, BMI3_STEP_MCR_THRESHOLD, config->mcr_threshold);
+                /* Set mcr_threshold for msb 8 bits */
+                step_config[23] =
+                    (BMI3_SET_BITS(mcr_threshold, BMI3_STEP_MCR_THRESHOLD,
+                                   config->mcr_threshold) & BMI3_STEP_MCR_THRESHOLD_MASK) >> 8;
 
-            sc_12_res = ((uint16_t)data_array[23] << 8);
-
-            sc_12_res = BMI3_SET_BITS(sc_12_res, BMI3_STEP_SC_12_RES, config->sc_12_res);
-
-            step_config[0] = (uint8_t)watermark1;
-            step_config[1] = (uint8_t)((watermark2 | reset_counter) >> 8);
-            step_config[2] = (uint8_t)env_min_dist_up1;
-            step_config[3] = (uint8_t)(env_min_dist_up2 >> 8);
-            step_config[4] = (uint8_t)env_coef_up1;
-            step_config[5] = (uint8_t)(env_coef_up2 >> 8);
-            step_config[6] = (uint8_t)env_min_dist_down1;
-            step_config[7] = (uint8_t)(env_min_dist_down2 >> 8);
-            step_config[8] = (uint8_t)env_coef_down1;
-            step_config[9] = (uint8_t)(env_coef_down2 >> 8);
-            step_config[10] = (uint8_t)mean_val_decay1;
-            step_config[11] = (uint8_t)(mean_val_decay2 >> 8);
-            step_config[12] = (uint8_t)mean_step_dur1;
-            step_config[13] = (uint8_t)(mean_step_dur2 >> 8);
-            step_config[14] = (uint8_t)(step_buffer_size | filter_cascade_enabled | step_counter_increment1);
-            step_config[15] = (uint8_t)(step_counter_increment2 >> 8);
-            step_config[16] = (uint8_t)peak_duration_min_walking;
-            step_config[17] = (uint8_t)(peak_duration_min_running >> 8);
-            step_config[18] = (uint8_t)(activity_detection_factor | activity_detection_threshold1);
-            step_config[19] = (uint8_t)(activity_detection_threshold2 >> 8);
-            step_config[20] = (uint8_t)step_duration_max;
-            step_config[21] = (uint8_t)(step_duration_window >> 8);
-            step_config[22] =
-                (uint8_t)(step_duration_pp_enabled | step_duration_threshold | mean_crossing_pp_enabled |
-                          mcr_threshold1);
-            step_config[23] = (uint8_t)((mcr_threshold2 | sc_12_res) >> 8);
-
-            /* Set the configuration back to feature engine register */
-            rslt = bmi3_set_regs(BMI3_REG_FEATURE_DATA_TX, step_config, 24, dev);
+                /* Set the configuration back to feature engine register */
+                rslt = bmi3_set_regs(BMI3_REG_FEATURE_DATA_TX, step_config, 24, dev);
+            }
         }
     }
     else
@@ -6798,75 +6695,90 @@ static int8_t set_tap_config(const struct bmi3_tap_detector_config *config, stru
     /* Array to set the base address of tap feature */
     uint8_t base_aadr[2] = { BMI3_BASE_ADDR_TAP, 0 };
 
-    uint16_t axis_sel, wait_fr_time_out, max_peaks_for_tap, mode;
-    uint16_t tap_peak_thres, tap_peak_thres1, tap_peak_thres2, max_gest_dur;
-    uint16_t max_dur_between_peaks, tap_shock_setting_dur, min_quite_dur_between_taps, quite_time_after_gest;
+    struct bmi3_accel_config acc_config = { 0 };
+
+    uint16_t tap_peak_thres, max_gest_dur, min_quite_dur_between_taps, quite_time_after_gest;
 
     if (config != NULL)
     {
-        /* Set the tap base address to feature engine transmission address to start DMA transaction */
-        rslt = bmi3_set_regs(BMI3_REG_FEATURE_DATA_ADDR, base_aadr, 2, dev);
+        rslt = get_accel_config(&acc_config, dev);
+
+        if ((rslt == BMI3_OK) && (acc_config.acc_mode == BMI3_ACC_MODE_LOW_PWR))
+        {
+            if (acc_config.odr >= BMI3_ACC_ODR_200HZ)
+            {
+                rslt = BMI3_OK;
+            }
+            else
+            {
+                rslt = BMI3_E_ACC_INVALID_CFG;
+            }
+        }
 
         if (rslt == BMI3_OK)
         {
-            /* Set axis_sel */
-            axis_sel = BMI3_SET_BIT_POS0(tap_config[0], BMI3_TAP_AXIS_SEL, config->axis_sel);
+            /* Set the tap base address to feature engine transmission address to start DMA transaction */
+            rslt = bmi3_set_regs(BMI3_REG_FEATURE_DATA_ADDR, base_aadr, 2, dev);
 
-            /* Set wait for time out */
-            wait_fr_time_out = BMI3_SET_BITS(tap_config[0], BMI3_TAP_WAIT_FR_TIME_OUT, config->wait_for_timeout);
+            if (rslt == BMI3_OK)
+            {
+                /* Set axis_sel */
+                tap_config[0] = BMI3_SET_BIT_POS0(tap_config[0], BMI3_TAP_AXIS_SEL, config->axis_sel);
 
-            /* Set maximum peaks for tap */
-            max_peaks_for_tap = BMI3_SET_BITS(tap_config[0], BMI3_TAP_MAX_PEAKS, config->max_peaks_for_tap);
+                /* Set wait for time out */
+                tap_config[0] |= BMI3_SET_BITS(tap_config[0], BMI3_TAP_WAIT_FR_TIME_OUT, config->wait_for_timeout);
 
-            /* Set mode */
-            mode = BMI3_SET_BITS(tap_config[0], BMI3_TAP_MODE, config->mode);
+                /* Set maximum peaks for tap */
+                tap_config[0] |= BMI3_SET_BITS(tap_config[0], BMI3_TAP_MAX_PEAKS, config->max_peaks_for_tap);
 
-            /* Set peak threshold first byte in word */
-            tap_peak_thres = BMI3_SET_BIT_POS0(tap_config[2], BMI3_TAP_PEAK_THRES, config->tap_peak_thres);
+                /* Set mode */
+                tap_config[0] |= BMI3_SET_BITS(tap_config[0], BMI3_TAP_MODE, config->mode);
 
-            /* Left shift by 8 times so that we can set rest of the values of tap peak threshold conf in word */
-            tap_peak_thres1 = ((uint16_t)tap_config[3] << 8);
+                /* Set peak threshold first byte in word */
+                tap_config[2] = (uint8_t)BMI3_SET_BIT_POS0(tap_config[2], BMI3_TAP_PEAK_THRES, config->tap_peak_thres);
 
-            /* Set peak threshold second byte in word */
-            tap_peak_thres2 = BMI3_SET_BIT_POS0(tap_peak_thres1, BMI3_TAP_PEAK_THRES, config->tap_peak_thres);
+                /* Left shift by 8 times so that we can set rest of the values of tap peak threshold conf in word */
+                tap_peak_thres = ((uint16_t)tap_config[3] << 8);
 
-            max_gest_dur = ((uint16_t)tap_config[3] << 8);
+                /* Set peak threshold second byte in word */
+                tap_config[3] =
+                    (BMI3_SET_BIT_POS0(tap_peak_thres, BMI3_TAP_PEAK_THRES,
+                                       config->tap_peak_thres) & BMI3_TAP_PEAK_THRES_MASK) >> 8;
 
-            /* Set max gesture duration */
-            max_gest_dur = BMI3_SET_BITS(max_gest_dur, BMI3_TAP_MAX_GEST_DUR, config->max_gest_dur);
+                max_gest_dur = ((uint16_t)tap_config[3] << 8);
 
-            /* Set max duration between peaks */
-            max_dur_between_peaks = BMI3_SET_BIT_POS0(tap_config[4],
-                                                      BMI3_TAP_MAX_DUR_BW_PEAKS,
-                                                      config->max_dur_between_peaks);
+                /* Set max gesture duration */
+                tap_config[3] |=
+                    (BMI3_SET_BITS(max_gest_dur, BMI3_TAP_MAX_GEST_DUR,
+                                   config->max_gest_dur) & BMI3_TAP_MAX_GEST_DUR_MASK) >> 8;
 
-            /* Set shock settling duration */
-            tap_shock_setting_dur =
-                BMI3_SET_BITS(tap_config[4], BMI3_TAP_SHOCK_SETT_DUR, config->tap_shock_settling_dur);
+                /* Set max duration between peaks */
+                tap_config[4] =
+                    (BMI3_SET_BIT_POS0(tap_config[4], BMI3_TAP_MAX_DUR_BW_PEAKS,
+                                       config->max_dur_between_peaks) & BMI3_TAP_MAX_DUR_BW_PEAKS_MASK);
 
-            min_quite_dur_between_taps = ((uint16_t)tap_config[5] << 8);
+                /* Set shock settling duration */
+                tap_config[4] |=
+                    (BMI3_SET_BITS(tap_config[4], BMI3_TAP_SHOCK_SETT_DUR,
+                                   config->tap_shock_settling_dur) & BMI3_TAP_SHOCK_SETT_DUR_MASK);
 
-            /* Set quite duration between taps */
-            min_quite_dur_between_taps = BMI3_SET_BITS(min_quite_dur_between_taps,
-                                                       BMI3_TAP_MIN_QUITE_DUR_BW_TAPS,
-                                                       config->min_quite_dur_between_taps);
+                min_quite_dur_between_taps = ((uint16_t)tap_config[5] << 8);
 
-            quite_time_after_gest = ((uint16_t)tap_config[5] << 8);
+                /* Set quite duration between taps */
+                tap_config[5] =
+                    (BMI3_SET_BITS(min_quite_dur_between_taps, BMI3_TAP_MIN_QUITE_DUR_BW_TAPS,
+                                   config->min_quite_dur_between_taps) & BMI3_TAP_MIN_QUITE_DUR_BW_TAPS_MASK) >> 8;
 
-            /* Set quite time after gesture */
-            quite_time_after_gest = BMI3_SET_BITS(quite_time_after_gest,
-                                                  BMI3_TAP_QUITE_TIME_AFTR_GEST,
-                                                  config->quite_time_after_gest);
+                quite_time_after_gest = ((uint16_t)tap_config[5] << 8);
 
-            /* Copy all the configurations back to the tap configuration array */
-            tap_config[0] = (uint8_t)(axis_sel | wait_fr_time_out | max_peaks_for_tap | mode);
-            tap_config[2] = (uint8_t)(tap_peak_thres);
-            tap_config[3] = (uint8_t)((tap_peak_thres2 | max_gest_dur) >> 8);
-            tap_config[4] = (uint8_t)(max_dur_between_peaks | tap_shock_setting_dur);
-            tap_config[5] = (uint8_t)((min_quite_dur_between_taps | quite_time_after_gest) >> 8);
+                /* Set quite time after gesture */
+                tap_config[5] |=
+                    (BMI3_SET_BITS(quite_time_after_gest, BMI3_TAP_QUITE_TIME_AFTR_GEST,
+                                   config->quite_time_after_gest) & BMI3_TAP_QUITE_TIME_AFTR_GEST_MASK) >> 8;
 
-            /* Set the configuration back to the feature engine register */
-            rslt = bmi3_set_regs(BMI3_REG_FEATURE_DATA_TX, tap_config, 6, dev);
+                /* Set the configuration back to the feature engine register */
+                rslt = bmi3_set_regs(BMI3_REG_FEATURE_DATA_TX, tap_config, 6, dev);
+            }
         }
     }
     else
@@ -7391,7 +7303,7 @@ static int8_t get_st_status_rslt(uint8_t st_selection, struct bmi3_st_result *st
     uint8_t reg_data[2];
 
     /* Variable to store the self-test status if it is ongoing or completed */
-    uint8_t st_status;
+    uint8_t st_complete_flag = 0;
 
     /* Variable to define index */
     uint8_t idx;
@@ -7405,103 +7317,67 @@ static int8_t get_st_status_rslt(uint8_t st_selection, struct bmi3_st_result *st
     /* Array to set the base address of self-test feature */
     uint8_t sc_st_base_addr[2] = { BMI3_BASE_ADDR_ST_RESULT, 0 };
 
-    st_result_status->self_test_err_rslt = 0;
+    st_result_status->self_test_err_status = 0;
 
     for (idx = 0; idx < limit; idx++)
     {
-        /* A delay of 120ms is required to read the error status register */
-        dev->delay_us(120000, dev->intf_ptr);
+        /* A delay of 350ms (35ms * 10(limit)) is required to run self-test for accel and gyro */
+        dev->delay_us(BMI3_ST_DELAY, dev->intf_ptr);
 
         rslt = bmi3_get_regs(BMI3_REG_FEATURE_IO1, data_array, 2, dev);
 
         if (rslt == BMI3_OK)
         {
-            st_status = (data_array[0] & BMI3_SC_ST_STATUS_MASK) >> BMI3_SC_ST_COMPLETE_POS;
+            st_complete_flag = (data_array[0] & BMI3_SC_ST_STATUS_MASK) >> BMI3_SC_ST_COMPLETE_POS;
 
-            if (st_status == BMI3_TRUE)
+            if (st_complete_flag == BMI3_TRUE)
             {
-                st_result_status->self_test_rslt = (data_array[0] & BMI3_ST_RESULT_MASK) >> BMI3_ST_RESULT_POS;
-
-                if (st_result_status->self_test_rslt != BMI3_TRUE)
-                {
-                    rslt = bmi3_get_feature_engine_error_status(&feature_engine_err_reg_lsb,
-                                                                &feature_engine_err_reg_msb,
-                                                                dev);
-                    st_result_status->self_test_err_rslt = feature_engine_err_reg_lsb & BMI3_SET_LOW_NIBBLE;
-                }
-                else
-                {
-                    rslt = bmi3_set_regs(BMI3_REG_FEATURE_DATA_ADDR, sc_st_base_addr, 2, dev);
-
-                    if (rslt == BMI3_OK)
-                    {
-                        rslt = bmi3_get_regs(BMI3_REG_FEATURE_DATA_TX, reg_data, 2, dev);
-
-                        if ((rslt == BMI3_OK) && (st_selection == BMI3_ST_ACCEL_ONLY))
-                        {
-                            st_result_status->acc_sens_x_ok = reg_data[0] & BMI3_ST_ACC_X_OK_MASK;
-                            st_result_status->acc_sens_y_ok = (reg_data[0] & BMI3_ST_ACC_Y_OK_MASK) >>
-                                                              BMI3_ST_ACC_Y_OK_POS;
-                            st_result_status->acc_sens_z_ok = (reg_data[0] & BMI3_ST_ACC_Z_OK_MASK) >>
-                                                              BMI3_ST_ACC_Z_OK_POS;
-
-                            st_result_status->gyr_sens_x_ok = BMI3_DISABLE;
-                            st_result_status->gyr_sens_y_ok = BMI3_DISABLE;
-                            st_result_status->gyr_sens_z_ok = BMI3_DISABLE;
-                            st_result_status->gyr_drive_ok = BMI3_DISABLE;
-                        }
-
-                        if ((rslt == BMI3_OK) && (st_selection == BMI3_ST_GYRO_ONLY))
-                        {
-                            st_result_status->acc_sens_x_ok = BMI3_DISABLE;
-                            st_result_status->acc_sens_y_ok = BMI3_DISABLE;
-                            st_result_status->acc_sens_z_ok = BMI3_DISABLE;
-
-                            st_result_status->gyr_sens_x_ok = (reg_data[0] & BMI3_ST_GYR_X_OK_MASK) >>
-                                                              BMI3_ST_GYR_X_OK_POS;
-                            st_result_status->gyr_sens_y_ok = (reg_data[0] & BMI3_ST_GYR_Y_OK_MASK) >>
-                                                              BMI3_ST_GYR_Y_OK_POS;
-                            st_result_status->gyr_sens_z_ok = (reg_data[0] & BMI3_ST_GYR_Z_OK_MASK) >>
-                                                              BMI3_ST_GYR_Z_OK_POS;
-                            st_result_status->gyr_drive_ok = (reg_data[0] & BMI3_ST_GYR_DRIVE_OK_MASK) >>
-                                                             BMI3_ST_GYR_DRIVE_OK_POS;
-                        }
-
-                        if ((rslt == BMI3_OK) && (st_selection == BMI3_ST_BOTH_ACC_GYR))
-                        {
-                            st_result_status->acc_sens_x_ok = reg_data[0] & BMI3_ST_ACC_X_OK_MASK;
-                            st_result_status->acc_sens_y_ok = (reg_data[0] & BMI3_ST_ACC_Y_OK_MASK) >>
-                                                              BMI3_ST_ACC_Y_OK_POS;
-                            st_result_status->acc_sens_z_ok = (reg_data[0] & BMI3_ST_ACC_Z_OK_MASK) >>
-                                                              BMI3_ST_ACC_Z_OK_POS;
-
-                            st_result_status->gyr_sens_x_ok = (reg_data[0] & BMI3_ST_GYR_X_OK_MASK) >>
-                                                              BMI3_ST_GYR_X_OK_POS;
-                            st_result_status->gyr_sens_y_ok = (reg_data[0] & BMI3_ST_GYR_Y_OK_MASK) >>
-                                                              BMI3_ST_GYR_Y_OK_POS;
-                            st_result_status->gyr_sens_z_ok = (reg_data[0] & BMI3_ST_GYR_Z_OK_MASK) >>
-                                                              BMI3_ST_GYR_Z_OK_POS;
-                            st_result_status->gyr_drive_ok = (reg_data[0] & BMI3_ST_GYR_DRIVE_OK_MASK) >>
-                                                             BMI3_ST_GYR_DRIVE_OK_POS;
-                        }
-                    }
-                }
-
                 break;
             }
-            else
-            {
-                /* If limit elapses returning the error code, error status is returned */
-                rslt = bmi3_get_feature_engine_error_status(&feature_engine_err_reg_lsb,
-                                                            &feature_engine_err_reg_msb,
-                                                            dev);
-                st_result_status->self_test_err_rslt = feature_engine_err_reg_lsb;
-            }
+        }
+    }
 
-            /* Checking the condition where the error status is no error */
-            if ((st_result_status->self_test_err_rslt & BMI3_SET_LOW_NIBBLE) == BMI3_NO_ERROR_MASK)
+    rslt = bmi3_get_feature_engine_error_status(&feature_engine_err_reg_lsb, &feature_engine_err_reg_msb, dev);
+    st_result_status->self_test_err_status = feature_engine_err_reg_lsb & BMI3_SET_LOW_NIBBLE;
+
+    if (st_complete_flag == BMI3_TRUE)
+    {
+        /* To avoid retaining the values of last iteration , the values are cleared*/
+        st_result_status->acc_sens_x_ok = BMI3_DISABLE;
+        st_result_status->acc_sens_y_ok = BMI3_DISABLE;
+        st_result_status->acc_sens_z_ok = BMI3_DISABLE;
+        st_result_status->gyr_sens_x_ok = BMI3_DISABLE;
+        st_result_status->gyr_sens_y_ok = BMI3_DISABLE;
+        st_result_status->gyr_sens_z_ok = BMI3_DISABLE;
+        st_result_status->gyr_drive_ok = BMI3_DISABLE;
+
+        /*stores the self test result*/
+        st_result_status->self_test_rslt = (data_array[0] & BMI3_ST_RESULT_MASK) >> BMI3_ST_RESULT_POS;
+
+        rslt = bmi3_set_regs(BMI3_REG_FEATURE_DATA_ADDR, sc_st_base_addr, 2, dev);
+
+        if (rslt == BMI3_OK)
+        {
+            rslt = bmi3_get_regs(BMI3_REG_FEATURE_DATA_TX, reg_data, 2, dev);
+
+            if (rslt == BMI3_OK)
             {
-                st_result_status->self_test_err_rslt = BMI3_OK;
+
+                if (st_selection & BMI3_ST_ACCEL_ONLY)
+                {
+                    st_result_status->acc_sens_x_ok = (reg_data[0] & BMI3_ST_ACC_X_OK_MASK);
+                    st_result_status->acc_sens_y_ok = (reg_data[0] & BMI3_ST_ACC_Y_OK_MASK) >> BMI3_ST_ACC_Y_OK_POS;
+                    st_result_status->acc_sens_z_ok = (reg_data[0] & BMI3_ST_ACC_Z_OK_MASK) >> BMI3_ST_ACC_Z_OK_POS;
+                }
+
+                if (st_selection & BMI3_ST_GYRO_ONLY)
+                {
+                    st_result_status->gyr_sens_x_ok = (reg_data[0] & BMI3_ST_GYR_X_OK_MASK) >> BMI3_ST_GYR_X_OK_POS;
+                    st_result_status->gyr_sens_y_ok = (reg_data[0] & BMI3_ST_GYR_Y_OK_MASK) >> BMI3_ST_GYR_Y_OK_POS;
+                    st_result_status->gyr_sens_z_ok = (reg_data[0] & BMI3_ST_GYR_Z_OK_MASK) >> BMI3_ST_GYR_Z_OK_POS;
+                    st_result_status->gyr_drive_ok = (reg_data[0] & BMI3_ST_GYR_DRIVE_OK_MASK) >>
+                                                     BMI3_ST_GYR_DRIVE_OK_POS;
+                }
             }
         }
     }
@@ -7556,21 +7432,20 @@ static int8_t get_sc_gyro_rslt(struct bmi3_self_calib_rslt *sc_rslt, struct bmi3
     uint8_t idx;
 
     /* Variable to define limit */
-    uint8_t limit = 25;
-
-    uint8_t data_array[2];
-
+    uint8_t limit = 10;
     uint8_t sc_status;
+    uint8_t data_array[2];
+    uint8_t sc_complete_flag = 0;
 
     /* Variable to define feature engine errors */
     uint8_t feature_engine_err_reg_lsb, feature_engine_err_reg_msb;
 
-    sc_rslt->sc_error_rslt = 0;
+    sc_rslt->sc_error_status = 0;
 
     for (idx = 0; idx < limit; idx++)
     {
-        /* A delay of 120ms is required to read the error status register */
-        dev->delay_us(120000, dev->intf_ptr);
+        /* A delay of 430ms (43ms * 10(limit)) is required to perform self calibration */
+        dev->delay_us(BMI3_SC_DELAY, dev->intf_ptr);
 
         rslt = bmi3_get_regs(BMI3_REG_FEATURE_IO1, data_array, 2, dev);
 
@@ -7578,17 +7453,23 @@ static int8_t get_sc_gyro_rslt(struct bmi3_self_calib_rslt *sc_rslt, struct bmi3
 
         if ((sc_status == BMI3_TRUE) && (rslt == BMI3_OK))
         {
-            sc_rslt->gyro_sc_rslt = (data_array[0] & BMI3_GYRO_SC_RESULT_MASK) >> BMI3_GYRO_SC_RESULT_POS;
+            /*Bail early if the self-calibration is completed * / */
+            sc_complete_flag = BMI3_TRUE;
+            break;
+        }
+    }
 
-            rslt = bmi3_get_feature_engine_error_status(&feature_engine_err_reg_lsb, &feature_engine_err_reg_msb, dev);
-            sc_rslt->sc_error_rslt = feature_engine_err_reg_lsb;
-        }
-        else
-        {
-            /* If limit elapses returning the error code, error status is returned */
-            rslt = bmi3_get_feature_engine_error_status(&feature_engine_err_reg_lsb, &feature_engine_err_reg_msb, dev);
-            sc_rslt->sc_error_rslt = feature_engine_err_reg_lsb;
-        }
+    if (sc_complete_flag == BMI3_TRUE)
+    {
+        sc_rslt->gyro_sc_rslt = (data_array[0] & BMI3_GYRO_SC_RESULT_MASK) >> BMI3_GYRO_SC_RESULT_POS;
+
+        sc_rslt->sc_error_status = data_array[0];
+    }
+    else
+    {
+        /* If limit elapses returning the error code, error status is returned */
+        rslt = bmi3_get_feature_engine_error_status(&feature_engine_err_reg_lsb, &feature_engine_err_reg_msb, dev);
+        sc_rslt->sc_error_status = feature_engine_err_reg_lsb;
     }
 
     return rslt;
@@ -8125,6 +8006,7 @@ static int8_t get_average_of_sensor_data(uint8_t sens_list,
             datardy_try_cnt = 5;
             do
             {
+                /* 20ms delay for 50Hz ODR */
                 dev->delay_us(20000, dev->intf_ptr);
                 rslt = bmi3_get_sensor_status(&drdy_status, dev);
                 datardy_try_cnt--;
@@ -8261,23 +8143,6 @@ static int8_t validate_foc_accel_axis(int16_t avg_foc_data, struct bmi3_dev *dev
 }
 
 /*!
- * @brief This internal API sets configurations for performing accelerometer FOC.
- */
-static int8_t set_accel_foc_config(struct bmi3_dev *dev)
-{
-    /* Variable to store result of API */
-    int8_t rslt;
-
-    /* Variable to set the accelerometer configuration value */
-    uint8_t acc_conf_data[2] = { BMI3_FOC_ACC_CONF_VAL_LSB, BMI3_FOC_ACC_CONF_VAL_MSB };
-
-    /* Set accelerometer configurations to 50Hz */
-    rslt = bmi3_set_regs(BMI3_REG_ACC_CONF, acc_conf_data, 2, dev);
-
-    return rslt;
-}
-
-/*!
  * @brief This internal API performs Fast Offset Compensation for accelerometer.
  */
 static int8_t perform_accel_foc(const struct bmi3_accel_foc_g_value *accel_g_value,
@@ -8294,7 +8159,7 @@ static int8_t perform_accel_foc(const struct bmi3_accel_foc_g_value *accel_g_val
     uint16_t reg_status = 0;
 
     /* Array of structure to store accelerometer data */
-    struct bmi3_sensor_data accel_value[128] = { { 0 } };
+    struct bmi3_sensor_data accel_value[BMI3_FOC_SAMPLE_LIMIT] = { { 0 } };
 
     /* Structure to store accelerometer data temporarily */
     struct bmi3_foc_temp_value temp = { 0, 0, 0 };
@@ -8317,9 +8182,12 @@ static int8_t perform_accel_foc(const struct bmi3_accel_foc_g_value *accel_g_val
     /* Variable tries max 5 times for interrupt then generates timeout */
     uint8_t try_cnt;
 
+    uint8_t reg_data[BMI3_READ_REG_DATA_LEN] = { 0 };
+
     for (loop = 0; loop < BMI3_FOC_SAMPLE_LIMIT; loop++)
     {
         try_cnt = 5;
+        reg_status = 0; /* Reset the value */
 
         while (try_cnt && (!(reg_status & BMI3_DRDY_ACC_MASK)))
         {
@@ -8329,9 +8197,22 @@ static int8_t perform_accel_foc(const struct bmi3_accel_foc_g_value *accel_g_val
             try_cnt--;
         }
 
-        if ((rslt == BMI3_OK) && (reg_status & BMI3_DRDY_ACC_MASK))
+        if (rslt != BMI3_OK)
         {
-            rslt = get_accel_sensor_data(&accel_value[loop].sens_data.acc, BMI3_REG_ACC_DATA_X, dev);
+            return rslt;
+        }
+
+        if (reg_status & BMI3_DRDY_ACC_MASK)
+        {
+            rslt = bmi3_read_reg_data(reg_data, dev);
+            if (rslt == BMI3_OK)
+            {
+                rslt = get_accel_sensortime_sat_data(&accel_value[loop].sens_data.acc, reg_data);
+            }
+        }
+        else
+        {
+            return BMI3_E_INVALID_STATUS;
         }
 
         if (rslt == BMI3_OK)
@@ -8350,9 +8231,9 @@ static int8_t perform_accel_foc(const struct bmi3_accel_foc_g_value *accel_g_val
     if (rslt == BMI3_OK)
     {
         /* Take average of x, y and z data for lesser noise */
-        accel_avg.x = (int16_t)(temp.x / 128);
-        accel_avg.y = (int16_t)(temp.y / 128);
-        accel_avg.z = (int16_t)(temp.z / 128);
+        accel_avg.x = (int16_t)(temp.x / BMI3_FOC_SAMPLE_LIMIT);
+        accel_avg.y = (int16_t)(temp.y / BMI3_FOC_SAMPLE_LIMIT);
+        accel_avg.z = (int16_t)(temp.z / BMI3_FOC_SAMPLE_LIMIT);
 
         rslt = get_accel_config(acc_cfg, dev);
 
@@ -8376,6 +8257,7 @@ static int8_t perform_accel_foc(const struct bmi3_accel_foc_g_value *accel_g_val
 
             /* Write offset data in the offset compensation register */
             rslt = bmi3_set_acc_dp_off_dgain(&offset, dev);
+
         }
     }
 
@@ -8503,6 +8385,8 @@ static void invert_accel_offset(struct bmi3_acc_dp_gain_offset *offset_data)
     offset_data->acc_dp_off_z = (uint16_t)((offset_data->acc_dp_off_z) * (BMI3_FOC_INVERT_VALUE));
 }
 
+#ifdef BMI330
+
 /*!
  * @brief This internal API sets the individual gyroscope
  * filter coefficients in the respective dma registers.
@@ -8546,6 +8430,7 @@ static int8_t set_gyro_filter_coefficients(struct bmi3_dev *dev)
 
     return rslt;
 }
+#endif
 
 /*!
  * @brief This internal API checks data index for data parsing.

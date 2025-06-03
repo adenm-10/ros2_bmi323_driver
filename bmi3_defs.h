@@ -1,5 +1,5 @@
 /**
-* Copyright (c) 2023 Bosch Sensortec GmbH. All rights reserved.
+ * Copyright (c) 2024 Bosch Sensortec GmbH. All rights reserved.
 *
 * BSD-3-Clause
 *
@@ -31,8 +31,8 @@
 * POSSIBILITY OF SUCH DAMAGE.
 *
 * @file       bmi3_defs.h
-* @date       2023-02-17
-* @version    v2.1.0
+* @date       2024-10-17
+* @version    v2.4.0
 *
 */
  #ifndef _BMI3_DEFS_H
@@ -188,7 +188,10 @@
 #define BMI3_ST_BOTH_ACC_GYR                         UINT8_C(3)
 
 /*! Soft-reset delay */
-#define BMI3_SOFT_RESET_DELAY                        UINT16_C(2000)
+#define BMI3_SOFT_RESET_DELAY                        UINT16_C(1500)
+
+/*! Macro to define read data(0x03 to 0x0F) length */
+#define BMI3_READ_REG_DATA_LEN                       UINT8_C(26)
 
 /***************************************************************************** */
 /*!         Sensor Macro Definitions                 */
@@ -261,7 +264,7 @@
 #define BMI3_REG_GYR_DATA_Z                          UINT8_C(0x08)
 
 /*! Temperature Data.
- *  The resolution is 512 LSB/K.
+ *  The resolution is 256 LSB/K.
  *  0x0000 -> 23 degree Celsius
  *  0x8000 -> invalid
  */
@@ -1099,6 +1102,9 @@ in INT_STATUS_INT1/2. */
 #define BMI3_ST_GYR_Z_OK_POS                         UINT8_C(5)
 #define BMI3_ST_GYR_DRIVE_OK_POS                     UINT8_C(6)
 
+#define BMI3_ST_DELAY                                UINT16_C(35000)
+#define BMI3_SC_DELAY                                UINT16_C(43000)
+
 /*! Macros to define values of BMI3 axis and its sign for re-map settings */
 #define BMI3_MAP_XYZ_AXIS                            UINT8_C(0x00)
 #define BMI3_MAP_YXZ_AXIS                            UINT8_C(0x01)
@@ -1272,9 +1278,6 @@ in INT_STATUS_INT1/2. */
 #define BMI3_STEP_MCR_THRESHOLD_MASK                 UINT16_C(0x03E0)
 #define BMI3_STEP_MCR_THRESHOLD_POS                  UINT8_C(5)
 
-#define BMI3_STEP_SC_12_RES_MASK                     UINT16_C(0x0C00)
-#define BMI3_STEP_SC_12_RES_POS                      UINT8_C(10)
-
 /*! Bit mask definitions for BMI3 tap feature configuration */
 #define BMI3_TAP_AXIS_SEL_MASK                       UINT16_C(0x0003)
 #define BMI3_TAP_WAIT_FR_TIME_OUT_MASK               UINT16_C(0x0004)
@@ -1369,6 +1372,25 @@ in INT_STATUS_INT1/2. */
 #define BMI3_ACC_RANGE_8G                            UINT8_C(0x02)
 #define BMI3_ACC_RANGE_16G                           UINT8_C(0x03)
 
+/*! G values */
+/* Macro function to derive the value macro from the range macro */
+#define BMI3_GET_RANGE_VAL(range)                    (range##_VAL)
+
+#define BMI3_ACC_RANGE_2G_VAL                        (2.0f)
+#define BMI3_ACC_RANGE_4G_VAL                        (4.00f)
+#define BMI3_ACC_RANGE_8G_VAL                        (8.00f)
+#define BMI3_ACC_RANGE_16G_VAL                       (16.00f)
+
+/*! dps values */
+/* Macro function to derive the value macro from the range macro */
+#define BMI3_GET_DPS_VAL(dps)                        (dps##_VAL)
+
+#define BMI3_GYR_RANGE_125DPS_VAL                    (125.00f)
+#define BMI3_GYR_RANGE_250DPS_VAL                    (250.00f)
+#define BMI3_GYR_RANGE_500DPS_VAL                    (500.00f)
+#define BMI3_GYR_RANGE_1000DPS_VAL                   (1000.00f)
+#define BMI3_GYR_RANGE_2000DPS_VAL                   (2000.00f)
+
 /*! Accelerometer mode */
 #define BMI3_ACC_MODE_DISABLE                        UINT8_C(0x00)
 #define BMI3_ACC_MODE_LOW_PWR                        UINT8_C(0x03)
@@ -1378,6 +1400,15 @@ in INT_STATUS_INT1/2. */
 /*! Accelerometer bandwidth */
 #define BMI3_ACC_BW_ODR_HALF                         UINT8_C(0)
 #define BMI3_ACC_BW_ODR_QUARTER                      UINT8_C(1)
+
+/* Macros to replace constant values */
+#define BMI3_N_SENSE_COUNT_1                         UINT8_C(1)
+#define BMI3_N_SENSE_COUNT_2                         UINT8_C(2)
+#define BMI3_N_SENSE_COUNT_3                         UINT8_C(3)
+#define BMI3_N_SENSE_COUNT_4                         UINT8_C(4)
+#define BMI3_N_SENSE_COUNT_5                         UINT8_C(5)
+#define BMI3_N_SENSE_COUNT_6                         UINT8_C(6)
+#define BMI3_N_SENSE_COUNT_7                         UINT8_C(7)
 
 /******************************************************************************/
 /*!       Gyroscope Macro Definitions               */
@@ -1706,9 +1737,6 @@ in INT_STATUS_INT1/2. */
 /*! Sensortime resolution in seconds */
 #define BMI3_SENSORTIME_RESOLUTION    0.0000390625f
 
-/*! Maximum number of interrupt pins */
-#define BMI3_INT_PIN_MAX_NUM          UINT8_C(2)
-
 /*! Maximum available register length */
 #define BMI3_MAX_LEN                  UINT8_C(128)
 
@@ -1721,6 +1749,9 @@ in INT_STATUS_INT1/2. */
 #define BMI3_ACC_4G_BIT_POS           UINT8_C(2)
 #define BMI3_ACC_8G_BIT_POS           UINT8_C(3)
 #define BMI3_ACC_16G_BIT_POS          UINT8_C(4)
+
+/*! Maximum number of interrupt pins */
+#define BMI3_INT_PIN_MAX_NUM          UINT8_C(2)
 
 /******************************************************************************/
 /*! @name       Gyro self-calibration/self-test coefficient macros  */
@@ -1741,6 +1772,9 @@ in INT_STATUS_INT1/2. */
 /*! Self-calibration enable disable macros */
 #define BMI3_SC_APPLY_CORR_DIS        UINT8_C(0)
 #define BMI3_SC_APPLY_CORR_EN         UINT8_C(4)
+
+#define INITIAL_LOW_VALUE             INT16_C(32767)
+#define INITIAL_HIGH_VALUE            INT16_C(-32768)
 
 /********************************************************* */
 /*!               Function Pointers                       */
@@ -1834,6 +1868,36 @@ struct bmi3_axes_remap
 
     /*! Re-mapped z-axis sign */
     uint8_t invert_z;
+};
+
+/*!
+ * @brief Store Accel data in terms of RAW, g_val, ms2
+ */
+struct bmi3_accel_processed_data
+{
+    /*! Accelerometer raw value */
+    float accel_raw;
+
+    /*! Accelerometer G value */
+    float accel_g;
+
+    /*! Accelerometer MS2 value */
+    float accel_ms2;
+};
+
+/*!
+ * @brief Store Gyro data in terms of RAW, DPS, MS2 and RPS
+ */
+struct bmi3_gyro_processed_data
+{
+    /*! Gyroscope raw value */
+    float gyro_raw;
+
+    /*! Gyroscope DPS value */
+    float gyro_dps;
+
+    /*! Gyroscope RPS value */
+    float gyro_rps;
 };
 
 /*!
@@ -1954,7 +2018,7 @@ struct bmi3_int_pin_config
 
 /*!
  * @brief Structure to define accelerometer and gyroscope sensor axes and
- * sensor time for virtual frames
+ * sensor time for virtual frames and temperature data.
  */
 struct bmi3_sens_axes_data
 {
@@ -1978,6 +2042,9 @@ struct bmi3_sens_axes_data
 
     /*! Saturation flag status for Z axis */
     uint8_t sat_z : 1;
+
+    /*! Temperature data */
+    uint16_t temp_data;
 };
 
 /*!
@@ -2093,7 +2160,7 @@ struct bmi3_st_result
     uint8_t gyr_drive_ok;
 
     /*! Stores the self-test error code result */
-    uint8_t self_test_err_rslt;
+    uint8_t self_test_err_status;
 };
 
 /*!
@@ -2106,6 +2173,9 @@ union bmi3_sens_data
 
     /*! Gyroscope axes data */
     struct bmi3_sens_axes_data gyr;
+
+    /*! Temperature data */
+    struct bmi3_sens_axes_data temp;
 
     /*! Step counter output */
     uint32_t step_counter_output;
@@ -2130,6 +2200,7 @@ struct bmi3_sensor_data
 
     /*! Defines various sensor data */
     union bmi3_sens_data sens_data;
+
 };
 
 /*!
@@ -2245,68 +2316,65 @@ struct bmi3_step_counter_config
     /*! Water-mark level */
     uint16_t watermark_level;
 
-    /*! Reset counter */
+    /*! Reset the accumulated step count value */
     uint16_t reset_counter;
 
-    /*! Step Counter param 1 */
+    /*! Threshold for upper peak of acceleration magnitude for step detection */
     uint16_t env_min_dist_up;
 
-    /*! Step Counter param 2 */
+    /*! Adaptive upper peak threshold decay coefficient */
     uint16_t env_coef_up;
 
-    /*! Step Counter param 3 */
+    /*! Threshold for lower peak of acceleration magnitude for step detection */
     uint16_t env_min_dist_down;
 
-    /*! Step Counter param 4 */
+    /*! Adaptive lower peak threshold decay coefficient */
     uint16_t env_coef_down;
 
-    /*! Step Counter param 5 */
+    /*! Exponential smoothing filter coefficient for computing mean of acceleration magnitude */
     uint16_t mean_val_decay;
 
-    /*! Step Counter param 6 */
+    /*! Exponential smoothing filter coefficient for computing mean duration between steps */
     uint16_t mean_step_dur;
 
-    /*! Step Counter param 7 */
+    /*! Minimum number of consecutive steps to be detected for updating step count */
     uint16_t step_buffer_size;
 
-    /*! Step Counter param 8 */
+    /*! Enable or disable cascading of filters */
     uint16_t filter_cascade_enabled;
 
-    /*! Step Counter param 9 */
+    /*! Scale factor for the step count to handle overcounting to undercounting */
     uint16_t step_counter_increment;
 
-    /*! Step Counter param 10 */
+    /*! Minimum duration between two consecutive steps while walking */
     uint16_t peak_duration_min_walking;
 
-    /*! Step Counter param 11 */
+    /*! Minimum duration between two consecutive steps while running */
     uint16_t peak_duration_min_running;
 
-    /*! Step Counter param 12 */
+    /*! Ratio of acceleration magnitude variance during running to walking */
     uint16_t activity_detection_factor;
 
-    /*! Step Counter param 13 */
+    /*! Acceleration magnitude variance threshold for activity classification */
     uint16_t activity_detection_thres;
 
-    /*! Step Counter param 14 */
+    /*! Maximum duration between two consecutive step occurrence */
     uint16_t step_duration_max;
 
-    /*! Step Counter param 15 */
+    /*! Maximum duration since last step where next step shall be detected to add missed step, if any */
     uint16_t step_duration_window;
 
-    /*! Step Counter param 16 */
+    /*! Enable or disable post-processing for duration between steps */
     uint16_t step_duration_pp_enabled;
 
-    /*! Step Counter param 17 */
+    /*! Scale factor for mean step duration for step processing */
     uint16_t step_duration_thres;
 
-    /*! Step Counter param 18 */
+    /*! Enable or disable post-processing of step based on mean crossing */
     uint16_t mean_crossing_pp_enabled;
 
-    /*! Step Counter param 19 */
+    /*! Threshold for number of mean crossings between two consecutive steps */
     uint16_t mcr_threshold;
-
-    /*! Step Counter param 20 */
-    uint16_t sc_12_res;
 };
 
 /*!
@@ -2695,8 +2763,8 @@ struct bmi3_self_calib_rslt
     /*! Stores the self-calibration result */
     uint8_t gyro_sc_rslt;
 
-    /*! Stores the self-calibration error codes result */
-    uint8_t sc_error_rslt;
+    /*! Stores the self-calibration error codes status */
+    uint8_t sc_error_status;
 };
 
 /*!

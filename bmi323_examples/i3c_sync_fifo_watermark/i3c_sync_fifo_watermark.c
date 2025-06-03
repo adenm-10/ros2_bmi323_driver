@@ -1,5 +1,5 @@
 /**\
- * Copyright (c) 2023 Bosch Sensortec GmbH. All rights reserved.
+ * Copyright (c) 2024 Bosch Sensortec GmbH. All rights reserved.
  *
  * SPDX-License-Identifier: BSD-3-Clause
  **/
@@ -14,14 +14,28 @@
 /******************************************************************************/
 /*!         Macros definition                                       */
 
-/*! Earth's gravity in m/s^2 */
-#define GRAVITY_EARTH                     (9.80665f)
-
 #define ACCEL                             UINT8_C(0x00)
 #define GYRO                              UINT8_C(0x01)
 
+/* Defines the size of the raw data buffer in the FIFO */
 #define BMI323_FIFO_RAW_DATA_BUFFER_SIZE  UINT16_C(2048)
+
+/*Defines the maximum user-defined length of raw data to be read from the FIFO */
 #define BMI323_FIFO_RAW_DATA_USER_LENGTH  UINT16_C(2048)
+
+/* Fifo watermark level is in words and 1 word = 2 bytes */
+#define BMI323_FIFO_WATERMARK_LEVEL       UINT16_C(800)
+
+/* Compute the maximum frame count based on the FIFO watermark level and the length of FIFO frame,
+ * accounting for all possible FIFO Frame Configurations
+ */
+#define BMI323_MAX_ACCEL_FRAME_COUNT      UINT16_C((BMI323_FIFO_WATERMARK_LEVEL * 2) / BMI3_LENGTH_FIFO_ACC)
+#define BMI323_MAX_GYRO_FRAME_COUNT       UINT16_C((BMI323_FIFO_WATERMARK_LEVEL * 2) / BMI3_LENGTH_FIFO_GYR)
+
+/*Since temperature data is triggered in sync with the accelerometer ODR,
+ * the number of instances for each would be equal to the number of accelerometer data instances.
+ */
+#define BMI323_MAX_TEMP_DATA_FRAME_COUNT  UINT16_C((BMI323_FIFO_WATERMARK_LEVEL * 2) / BMI3_LENGTH_FIFO_ACC)
 
 /******************************************************************************/
 /*!         Structure Definition                                              */
@@ -37,21 +51,20 @@ struct bmi3_sens_config config[2];
  *
  *  @param[in] dev       : Structure instance of bmi3_dev.
  *
- *  @return Status of execution.
+ *  @return void.
  */
-static int8_t set_sensor_config(struct bmi3_dev *dev);
+static void set_sensor_config(struct bmi3_dev *dev);
 
-/*!
- *  @brief This internal function converts lsb to meter per second squared for 16 bit accelerometer for
- *  range 2G, 4G, 8G or 16G.
+/*! @brief This internal API converts raw sensor values(LSB) to G value
  *
- *  @param[in] val       : LSB from each axis.
- *  @param[in] g_range   : Gravity range.
- *  @param[in] bit_width : Resolution for accel.
+ *  @param[in] val        : Raw sensor value.
+ *  @param[in] g_range    : Accel Range selected (4G).
+ *  @param[in] bit_width  : Resolution of the sensor.
  *
- *  @return Accel values in meter per second squared.
+ *  @return Accel values in Gravity(G)
+ *
  */
-static float lsb_to_mps2(int16_t val, int8_t g_range, uint8_t bit_width);
+static float lsb_to_g(int16_t val, float g_range, uint8_t bit_width);
 
 /*!
  *  @brief This function converts lsb to degree per second for 16 bit gyro at
@@ -93,6 +106,8 @@ int main(void)
     /* Variable to index bytes. */
     uint8_t idx;
 
+    uint16_t watermark = 0;
+
     struct bmi3_feature_enable feature = { 0 };
 
     /* Variable to store temperature */
@@ -103,35 +118,14 @@ int main(void)
     /* Number of bytes of FIFO data */
     uint8_t fifo_data[BMI323_FIFO_RAW_DATA_BUFFER_SIZE] = { 0 };
 
-    /* Set FIFO water-mark level in words */
-    uint16_t fifo_watermark_level = 800;
+    /* Array to store accelerometer data frames extracted from FIFO */
+    struct bmi3_fifo_sens_axes_data fifo_accel_data[BMI323_MAX_ACCEL_FRAME_COUNT];
 
-    uint16_t watermark = 0;
+    /*Array to store gyroscope data frames extracted from FIFO */
+    struct bmi3_fifo_sens_axes_data fifo_gyro_data[BMI323_MAX_GYRO_FRAME_COUNT];
 
-    /* Array of accelerometer frames */
-
-    /* Calculation for frame count:
-     * Total frame count = FIFO water-mark size(in bytes) / Total accel frames
-     *                   = (1600 / 6) = 266 frames
-     */
-    struct bmi3_fifo_sens_axes_data fifo_accel_data[266];
-
-    /* Array of gyroscope frames */
-
-    /* Calculation for frame count:
-     * Total frame count = FIFO water-mark size(in bytes) / Total gyro frames
-     *                   = (1600 / 6) = 266 frames
-     */
-    struct bmi3_fifo_sens_axes_data fifo_gyro_data[266];
-
-    /* Array of temperature frames */
-
-    /* Calculation for frame count:
-     * Total frame count = FIFO water-mark size(in bytes) / Total temperature frames
-     *                   = (1600 / 6) = 266 frames
-     * NOTE: Since Temperature runs based on Accel, Accel buffer size is been provided
-     */
-    struct bmi3_fifo_temperature_data fifo_temp_data[266];
+    /* Array to store temperature data frames extracted from FIFO */
+    struct bmi3_fifo_temperature_data fifo_temp_data[BMI323_MAX_TEMP_DATA_FRAME_COUNT];
 
     /* Initialize FIFO frame structure */
     struct bmi3_fifo_frame fifoframe = { 0 };
@@ -143,7 +137,7 @@ int main(void)
      * For I2C : BMI3_I2C_INTF
      * For SPI : BMI3_SPI_INTF
      */
-    rslt = bmi3_interface_init(&dev, BMI3_SPI_INTF);
+    rslt = bmi3_interface_init(&dev, BMI3_I2C_INTF);
     bmi3_error_codes_print_result("bmi3_interface_init", rslt);
 
     if (rslt == BMI323_OK)
@@ -159,8 +153,7 @@ int main(void)
 
             if (rslt == BMI323_OK)
             {
-                rslt = set_sensor_config(&dev);
-                bmi3_error_codes_print_result("set_sensor_config", rslt);
+                set_sensor_config(&dev);
 
                 /* Enable i3c_sync feature */
                 feature.i3c_sync_en = BMI323_ENABLE;
@@ -201,7 +194,7 @@ int main(void)
                 fifoframe.length = BMI323_FIFO_RAW_DATA_USER_LENGTH;
 
                 /* Set the water-mark level */
-                fifoframe.wm_lvl = fifo_watermark_level;
+                fifoframe.wm_lvl = BMI323_FIFO_WATERMARK_LEVEL;
 
                 rslt = bmi323_set_fifo_wm(fifoframe.wm_lvl, &dev);
                 bmi3_error_codes_print_result("bmi323_set_fifo_wm", rslt);
@@ -243,21 +236,21 @@ int main(void)
                             (void)bmi323_extract_accel(fifo_accel_data, &fifoframe, &dev);
                             printf("\nParsed accelerometer data frames: %d\n", fifoframe.avail_fifo_accel_frames);
 
-                            printf("Accel data in LSB units and Gravity data in m/s^2\n");
+                            printf("Accel data in LSB units and in Gravity\n");
 
                             printf(
-                                "\nACCEL_DATA_SET, Acc_Raw_X, Acc_Raw_Y, Acc_Raw_Z, Acc_ms2_X, Acc_ms2_Y, Acc_ms2_Z, SensorTime(lsb)\n");
+                                "\nACCEL_DATA_SET, Acc_Raw_X, Acc_Raw_Y, Acc_Raw_Z, Acc_G_X, Acc_G_Y, Acc_G_Z, SensorTime(lsb)\n");
 
                             /* Print the parsed accelerometer data from the FIFO buffer */
                             for (idx = 0; idx < fifoframe.avail_fifo_accel_frames; idx++)
                             {
-                                /* Converting lsb to meter per second squared for 16 bit accelerometer at 2G range.
+                                /* Converting lsb to gravity for 16 bit accelerometer at 2G range.
                                  * */
-                                x = lsb_to_mps2(fifo_accel_data[idx].x, 2, dev.resolution);
-                                y = lsb_to_mps2(fifo_accel_data[idx].y, 2, dev.resolution);
-                                z = lsb_to_mps2(fifo_accel_data[idx].z, 2, dev.resolution);
+                                x = lsb_to_g(fifo_accel_data[idx].x, 2.0f, dev.resolution);
+                                y = lsb_to_g(fifo_accel_data[idx].y, 2.0f, dev.resolution);
+                                z = lsb_to_g(fifo_accel_data[idx].z, 2.0f, dev.resolution);
 
-                                /* Print the data in m/s2. */
+                                /* Print the data in Gravity. */
                                 printf("%d, %d, %d, %d, %4.2f, %4.2f, %4.2f, %d\n",
                                        idx,
                                        fifo_accel_data[idx].x,
@@ -334,7 +327,7 @@ int main(void)
 /*!
  * @brief This internal API is used to set configurations for accelerometer, gyroscope and FIFO.
  */
-static int8_t set_sensor_config(struct bmi3_dev *dev)
+static void set_sensor_config(struct bmi3_dev *dev)
 {
     int8_t rslt;
 
@@ -359,7 +352,7 @@ static int8_t set_sensor_config(struct bmi3_dev *dev)
 
     config[GYRO].cfg.gyr.bwp = BMI3_GYR_BW_ODR_HALF;
     config[GYRO].cfg.gyr.range = BMI3_GYR_RANGE_125DPS;
-    config[GYRO].cfg.gyr.gyr_mode = BMI3_ACC_MODE_NORMAL;
+    config[GYRO].cfg.gyr.gyr_mode = BMI3_GYR_MODE_NORMAL;
 
     rslt = bmi323_set_sensor_config(config, 2, dev);
     bmi3_error_codes_print_result("set_sensor_fifo_config", rslt);
@@ -383,21 +376,18 @@ static int8_t set_sensor_config(struct bmi3_dev *dev)
     /* Map the interrupt configuration */
     rslt = bmi323_map_interrupt(map_int, dev);
     bmi3_error_codes_print_result("bmi323_map_interrupt", rslt);
-
-    return rslt;
 }
 
 /*!
- * @brief This function converts lsb to meter per second squared for 16 bit accelerometer at
- * range 2G, 4G, 8G or 16G.
+ * @brief This internal API converts raw sensor values(LSB) to G value
  */
-static float lsb_to_mps2(int16_t val, int8_t g_range, uint8_t bit_width)
+static float lsb_to_g(int16_t val, float g_range, uint8_t bit_width)
 {
     double power = 2;
 
     float half_scale = (float)((pow((double)power, (double)bit_width) / 2.0f));
 
-    return (GRAVITY_EARTH * val * g_range) / half_scale;
+    return (val * g_range) / half_scale;
 }
 
 /*!

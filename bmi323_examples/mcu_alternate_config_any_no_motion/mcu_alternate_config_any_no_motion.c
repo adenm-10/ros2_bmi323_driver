@@ -1,5 +1,5 @@
 /**\
- * Copyright (c) 2023 Bosch Sensortec GmbH. All rights reserved.
+ * Copyright (c) 2024 Bosch Sensortec GmbH. All rights reserved.
  *
  * SPDX-License-Identifier: BSD-3-Clause
  **/
@@ -14,7 +14,6 @@
 /*          Global variable declaration                              */
 /*********************************************************************/
 
-volatile uint8_t drdy_int_status = 0;
 volatile uint8_t feat_int_status = 0;
 
 struct bmi3_dev dev;
@@ -34,18 +33,9 @@ struct bmi3_dev dev;
 static void init_bmi323(void);
 
 /*!
- * @brief This internal API is used to set the data ready interrupt status
- *
- *  @param[in] void
- *
- *  @return void
- */
-static void drdy_int_callback(uint32_t param1, uint32_t param2);
-
-/*!
  * @brief This internal API is used to set the feature interrupt status
  *
- *  @param[in] void
+ *  @param[in] param1, param2
  *
  *  @return void
  */
@@ -123,11 +113,15 @@ static void set_feature_config(void)
         config[1].cfg.any_motion.slope_thres = 9;
         config[1].cfg.any_motion.hysteresis = 5;
         config[1].cfg.any_motion.duration = 9;
+        config[1].cfg.any_motion.acc_ref_up = 1;
+        config[1].cfg.any_motion.wait_time = 4;
 
         /* Set no-motion configuration settings */
         config[2].cfg.no_motion.slope_thres = 8;
         config[2].cfg.no_motion.duration = 9;
         config[2].cfg.no_motion.hysteresis = 5;
+        config[2].cfg.no_motion.acc_ref_up = 1;
+        config[2].cfg.no_motion.wait_time = 5;
 
         /* Assign the features to user and alternate switch
          * NOTE: Any of one the feature (either any-motion or no-motion) can be assigned to alternate configuration.
@@ -165,16 +159,6 @@ static void set_feature_config(void)
 }
 
 /*!
- * @brief This internal API is used to set the data ready interrupt status
- */
-static void drdy_int_callback(uint32_t param1, uint32_t param2)
-{
-    (void)param1;
-    (void)param2;
-    drdy_int_status = 1;
-}
-
-/*!
  * @brief This internal API is used to set the feature interrupt status
  */
 static void feat_int_callback(uint32_t param1, uint32_t param2)
@@ -193,23 +177,16 @@ int main(void)
     /* Variable to define result */
     int8_t rslt;
 
-    /* Create an instance of sensor data structure */
-    struct bmi3_sensor_data sensor_data[2] = { { 0 } };
-
     /* Interrupt mapping structure */
     struct bmi3_map_int map_int = { 0 };
 
     /* Structure to store alternate configuration status */
     struct bmi3_alt_status alt_status = { 0 };
 
-    /* Variable to get data ready interrupt status */
-    uint16_t drdy_int;
-
     /* Variable to get feature interrupt status */
     uint16_t feat_int;
 
-    uint8_t limit = 5;
-    uint8_t count = 0;
+    uint8_t any_mot_count = 0, no_mot_count = 0;
 
     /* Feature enable initialization. */
     struct bmi3_feature_enable feature = { 0 };
@@ -217,18 +194,12 @@ int main(void)
     /* Structure to define interrupt pin type, mode and configurations */
     struct bmi3_int_pin_config int_cfg = { 0 };
 
-    /* Select accel sensor. */
-    sensor_data[0].type = BMI323_ACCEL;
-
-    /* Select gyro sensor. */
-    sensor_data[1].type = BMI323_GYRO;
-
     /* Function to select interface between SPI and I2C, according to that the device structure gets updated.
      * Interface reference is given as a parameter
      * For I2C : BMI3_I2C_INTF
      * For SPI : BMI3_SPI_INTF
      */
-    rslt = bmi3_interface_init(&dev, BMI3_SPI_INTF);
+    rslt = bmi3_interface_init(&dev, BMI3_I2C_INTF);
     bmi3_error_codes_print_result("bmi3 interface init", rslt);
 
     /* After sensor init introduce 200 msec sleep */
@@ -271,14 +242,11 @@ int main(void)
     /* Select the feature and map the interrupt to pin BMI323_INT1 or BMI323_INT2 */
     map_int.any_motion_out = BMI3_INT2;
     map_int.no_motion_out = BMI3_INT2;
-    map_int.acc_drdy_int = BMI3_INT1;
-    map_int.gyr_drdy_int = BMI3_INT1;
 
     /* Map the feature interrupt. */
     rslt = bmi323_map_interrupt(map_int, &dev);
     bmi3_error_codes_print_result("Map interrupt", rslt);
 
-    coines_attach_interrupt(COINES_SHUTTLE_PIN_20, drdy_int_callback, COINES_PIN_INTERRUPT_FALLING_EDGE);
     coines_attach_interrupt(COINES_SHUTTLE_PIN_21, feat_int_callback, COINES_PIN_INTERRUPT_FALLING_EDGE);
 
     printf("Move the board to perform any-motion which runs in user configuration\n");
@@ -286,44 +254,6 @@ int main(void)
 
     for (;;)
     {
-        if (drdy_int_status == 1)
-        {
-            /* Clear buffer */
-            drdy_int_status = 0;
-
-            /* Read the interrupt status from int 1 pin */
-            rslt = bmi323_get_int1_status(&drdy_int, &dev);
-            bmi3_error_codes_print_result("Read interrupt status", rslt);
-
-            /* To check the accel data ready interrupt status and print the status of x, y and z-axis. */
-            if (drdy_int & BMI3_INT_STATUS_ACC_DRDY)
-            {
-                /* Get accelerometer data for x, y and z-axis. */
-                rslt = bmi323_get_sensor_data(&sensor_data[0], 1, &dev);
-                bmi3_error_codes_print_result("Get sensor data", rslt);
-
-                printf("Accel-x = %d\tAccel-y = %d\tAccel-z = %d\tSensor time %ld\n",
-                       sensor_data[0].sens_data.acc.x,
-                       sensor_data[0].sens_data.acc.y,
-                       sensor_data[0].sens_data.acc.z,
-                       (long int)sensor_data[0].sens_data.acc.sens_time);
-            }
-
-            /* To check the gyro data ready interrupt status and print the status of x, y and z-axis. */
-            if (drdy_int & BMI3_INT_STATUS_GYR_DRDY)
-            {
-                /* Get gyro data for x, y and z-axis. */
-                rslt = bmi323_get_sensor_data(&sensor_data[1], 1, &dev);
-                bmi3_error_codes_print_result("Get sensor data", rslt);
-
-                printf("Gyro-x = %d\tGyro-y = %d\tGyro-z = %d\tSensor time %ld\n",
-                       sensor_data[1].sens_data.gyr.x,
-                       sensor_data[1].sens_data.gyr.y,
-                       sensor_data[1].sens_data.gyr.z,
-                       (long int)sensor_data[1].sens_data.gyr.sens_time);
-            }
-        }
-
         if (feat_int_status == 1)
         {
             feat_int_status = 0;
@@ -342,7 +272,7 @@ int main(void)
                 printf("Alternate accel status %d\n", alt_status.alt_accel_status);
                 printf("Alternate gyro status %d\n", alt_status.alt_gyro_status);
 
-                count++;
+                any_mot_count++;
             }
 
             /* Check the interrupt status of the no-motion */
@@ -353,10 +283,12 @@ int main(void)
                 rslt = bmi323_read_alternate_status(&alt_status, &dev);
                 printf("Alternate accel status %d\n", alt_status.alt_accel_status);
                 printf("Alternate gyro status %d\n", alt_status.alt_gyro_status);
+
+                no_mot_count++;
             }
         }
 
-        if (count == limit)
+        if ((any_mot_count > 0) && (no_mot_count > 0))
         {
             break;
         }

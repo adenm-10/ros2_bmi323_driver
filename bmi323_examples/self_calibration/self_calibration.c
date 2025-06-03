@@ -1,5 +1,5 @@
 /**\
- * Copyright (c) 2023 Bosch Sensortec GmbH. All rights reserved.
+ * Copyright (c) 2024 Bosch Sensortec GmbH. All rights reserved.
  *
  * SPDX-License-Identifier: BSD-3-Clause
  **/
@@ -12,15 +12,6 @@
 
 /******************************************************************************/
 /*!         Static Function Declaration                                       */
-
-/*!
- *  @brief This internal API is used to set configurations for accel.
- *
- *  @param[in] dev       : Structure instance of bmi3_dev.
- *
- *  @return Status of execution.
- */
-static int8_t set_accel_config(struct bmi3_dev *dev);
 
 /*!
  *  @brief This internal API is used to set configurations for gyro.
@@ -53,10 +44,10 @@ int main(void)
     uint8_t idx;
 
     /* Variable to define limit. */
-    uint8_t limit = 2;
+    uint8_t limit = 3;
 
     /* Array to define self-calibration modes. */
-    uint8_t sc_selection[2] = { BMI3_SC_SENSITIVITY_EN, BMI3_SC_OFFSET_EN };
+    uint8_t sc_selection[3] = { BMI3_SC_SENSITIVITY_EN, BMI3_SC_OFFSET_EN, BMI3_SC_SENSITIVITY_EN | BMI3_SC_OFFSET_EN };
 
     /* Structure instance of gyro dp gain offset */
     struct bmi3_gyr_dp_gain_offset gyr_dp_gain_offset = { 0 };
@@ -66,157 +57,77 @@ int main(void)
      * For I2C : BMI3_I2C_INTF
      * For SPI : BMI3_SPI_INTF
      */
-    rslt = bmi3_interface_init(&dev, BMI3_SPI_INTF);
+    rslt = bmi3_interface_init(&dev, BMI3_I2C_INTF);
     bmi3_error_codes_print_result("bmi3_interface_init", rslt);
 
     if (rslt == BMI323_OK)
     {
-        /* Initialize bmi323 */
-        rslt = bmi323_init(&dev);
-        bmi3_error_codes_print_result("bmi323_init", rslt);
-
-        rslt = set_accel_config(&dev);
-        bmi3_error_codes_print_result("set_accel_config", rslt);
-
-        rslt = set_gyro_config(&dev);
-        bmi3_error_codes_print_result("set_gyro_config", rslt);
-
-        if (rslt == BMI323_OK)
+        for (idx = 0; idx < limit; idx++)
         {
-            for (idx = 0; idx < limit; idx++)
+            /* Initialize bmi323 */
+            rslt = bmi323_init(&dev);
+            bmi3_error_codes_print_result("bmi323_init", rslt);
+
+            rslt = set_gyro_config(&dev);
+
+            if (rslt == BMI323_OK)
             {
-                if ((idx + 1) == BMI3_SC_SENSITIVITY_EN)
+                if (sc_selection[idx] == BMI3_SC_SENSITIVITY_EN)
                 {
-                    printf("Self-calibration for sensitivity mode\n");
+                    printf("\n\nSelf-calibration for sensitivity mode\n");
+                }
+                else if (sc_selection[idx] == BMI3_SC_OFFSET_EN)
+                {
+                    printf("\n\nSelf-calibration for offset mode\n");
                 }
                 else
                 {
-                    printf("\n\nSelf-calibration for offset mode\n");
+                    printf("\n\nSelf-calibration for sensitivity and offset mode\n");
                 }
 
                 /* Performs self-calibration for either sensitivity, offset or both */
                 rslt = bmi323_perform_gyro_sc(sc_selection[idx], apply_corr, &sc_rslt, &dev);
                 bmi3_error_codes_print_result("bmi323_perform_gyro_sc", rslt);
 
-                if ((rslt == BMI323_OK) && (sc_rslt.gyro_sc_rslt == BMI323_TRUE))
+                if ((rslt == BMI323_OK) && (sc_rslt.gyro_sc_rslt == BMI323_TRUE) &&
+                    ((sc_rslt.sc_error_status & BMI3_SET_LOW_NIBBLE) == BMI3_NO_ERROR_MASK))
                 {
-                    printf("Self calibration is successfully completed \n");
+                    printf("\nSelf calibration is successfully completed \n\n");
                 }
 
                 if ((rslt == BMI323_OK) && (sc_rslt.gyro_sc_rslt == BMI323_FALSE))
                 {
-                    printf("Self calibration is not successfully completed \n");
+                    printf("\nSelf calibration is not successfully completed \n\n");
 
-                    switch (sc_rslt.sc_error_rslt)
+                    switch (sc_rslt.sc_error_status)
                     {
                         case BMI3_SC_ST_ABORTED_MASK:
-                            printf("SC_ST_ABORTED\n");
+                            printf("SC_ST_ABORTED\n\n");
                             break;
                         case BMI3_SC_ST_PRECON_ERR_MASK:
-                            printf("BMI323_SC_ST_PRECON_ERR\n");
+                            printf("BMI323_SC_ST_PRECON_ERR\n\n");
                             break;
                         case BMI3_MODE_CHANGE_WHILE_SC_ST_MASK:
-                            printf("BMI323_MODE_CHANGE_WHILE_SC_ST\n");
+                            printf("BMI323_MODE_CHANGE_WHILE_SC_ST\n\n");
                             break;
                         default:
                             break;
                     }
                 }
 
-                printf("Result of self-calibration error \n");
-
-                if (((sc_rslt.sc_error_rslt & BMI3_SET_LOW_NIBBLE) == BMI3_NO_ERROR_MASK))
-                {
-                    printf("\tNo error\n");
-                }
-                else
-                {
-                    printf("\tError: %d\n", sc_rslt.sc_error_rslt & BMI3_SET_LOW_NIBBLE);
-                }
-
-                if (sc_rslt.sc_error_rslt & BMI3_SC_ST_COMPLETE_MASK)
-                {
-                    printf("\tSelf-calibration procedure is completed.\n");
-                }
-                else
-                {
-                    printf("\tError: Self-calibration procedure is not completed\n");
-                }
-
-                printf("\nResult of self-calibration is %d\n", sc_rslt.gyro_sc_rslt);
-
                 rslt = bmi323_get_gyro_dp_off_dgain(&gyr_dp_gain_offset, &dev);
                 bmi3_error_codes_print_result("bmi323_get_gyro_off_dgain", rslt);
-                printf("Result of gyro dp offset x is %d\n", gyr_dp_gain_offset.gyr_dp_off_x);
-                printf("Result of gyro dp offset y is %d\n", gyr_dp_gain_offset.gyr_dp_off_y);
-                printf("Result of gyro dp offset z is %d\n", gyr_dp_gain_offset.gyr_dp_off_z);
-                printf("Result of gyro dp gain x is %d\n", gyr_dp_gain_offset.gyr_dp_dgain_x);
-                printf("Result of gyro dp gain y is %d\n", gyr_dp_gain_offset.gyr_dp_dgain_y);
-                printf("Result of gyro dp gain z is %d\n", gyr_dp_gain_offset.gyr_dp_dgain_z);
+                printf("Result of gyro dp offset x(LSB) is %d\n", gyr_dp_gain_offset.gyr_dp_off_x);
+                printf("Result of gyro dp offset y(LSB) is %d\n", gyr_dp_gain_offset.gyr_dp_off_y);
+                printf("Result of gyro dp offset z(LSB) is %d\n", gyr_dp_gain_offset.gyr_dp_off_z);
+                printf("Result of gyro dp gain x(LSB) is %d\n", gyr_dp_gain_offset.gyr_dp_dgain_x);
+                printf("Result of gyro dp gain y(LSB) is %d\n", gyr_dp_gain_offset.gyr_dp_dgain_y);
+                printf("Result of gyro dp gain z(LSB) is %d\n", gyr_dp_gain_offset.gyr_dp_dgain_z);
             }
         }
     }
 
     bmi3_coines_deinit();
-
-    return rslt;
-}
-
-/*!
- * @brief This internal API is used to set configurations for accel.
- */
-static int8_t set_accel_config(struct bmi3_dev *dev)
-{
-    /* Status of API are returned to this variable. */
-    int8_t rslt;
-
-    /* Structure to define accelerometer configuration. */
-    struct bmi3_sens_config config;
-
-    /* Structure to map interrupt */
-    struct bmi3_map_int map_int = { 0 };
-
-    /* Configure the type of feature. */
-    config.type = BMI323_ACCEL;
-
-    /* Get default configurations for the type of feature selected. */
-    rslt = bmi323_get_sensor_config(&config, 1, dev);
-    bmi3_error_codes_print_result("bmi323_get_sensor_config", rslt);
-
-    if (rslt == BMI323_OK)
-    {
-        map_int.acc_drdy_int = BMI3_INT1;
-
-        /* Map data ready interrupt to interrupt pin. */
-        rslt = bmi323_map_interrupt(map_int, dev);
-        bmi3_error_codes_print_result("bmi323_map_interrupt", rslt);
-
-        if (rslt == BMI323_OK)
-        {
-            /* NOTE: The user can change the following configuration parameters according to their requirement. */
-            /* Output Data Rate. By default ODR is set as 100Hz for accel. */
-            config.cfg.acc.odr = BMI3_ACC_ODR_100HZ;
-
-            /* Gravity range of the sensor (+/- 2G, 4G, 8G, 16G). */
-            config.cfg.acc.range = BMI3_ACC_RANGE_8G;
-
-            /* The Accel bandwidth coefficient defines the 3 dB cutoff frequency in relation to the ODR. */
-            config.cfg.acc.bwp = BMI3_ACC_BW_ODR_HALF;
-
-            /* Set number of average samples for accel. */
-            config.cfg.acc.avg_num = BMI3_ACC_AVG1;
-
-            /* Enable the accel mode where averaging of samples
-             * will be done based on above set bandwidth and ODR.
-             * Note : By default accel is disabled. The accel will get enable by selecting the mode.
-             */
-            config.cfg.acc.acc_mode = BMI3_ACC_MODE_NORMAL;
-
-            /* Set the accel configurations. */
-            rslt = bmi323_set_sensor_config(&config, 1, dev);
-            bmi3_error_codes_print_result("bmi323_set_sensor_config", rslt);
-        }
-    }
 
     return rslt;
 }
@@ -269,13 +180,13 @@ static int8_t set_gyro_config(struct bmi3_dev *dev)
             config.cfg.gyr.gyr_mode = BMI3_GYR_MODE_NORMAL;
 
             /* Value    Name    Description
-             *  000     avg_1   No averaging; pass sample without filtering
-             *  001     avg_2   Averaging of 2 samples
-             *  010     avg_4   Averaging of 4 samples
-             *  011     avg_8   Averaging of 8 samples
-             *  100     avg_16  Averaging of 16 samples
-             *  101     avg_32  Averaging of 32 samples
-             *  110     avg_64  Averaging of 64 samples
+             *  0b000     avg_1   No averaging; pass sample without filtering
+             *  0b001     avg_2   Averaging of 2 samples
+             *  0b010     avg_4   Averaging of 4 samples
+             *  0b011     avg_8   Averaging of 8 samples
+             *  0b100     avg_16  Averaging of 16 samples
+             *  0b101     avg_32  Averaging of 32 samples
+             *  0b110     avg_64  Averaging of 64 samples
              */
             config.cfg.gyr.avg_num = BMI3_GYR_AVG1;
 

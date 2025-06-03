@@ -1,5 +1,5 @@
 /**\
- * Copyright (c) 2023 Bosch Sensortec GmbH. All rights reserved.
+ * Copyright (c) 2024 Bosch Sensortec GmbH. All rights reserved.
  *
  * SPDX-License-Identifier: BSD-3-Clause
  **/
@@ -58,7 +58,7 @@ int main(void)
      * For I2C : BMI3_I2C_INTF
      * For SPI : BMI3_SPI_INTF
      */
-    rslt = bmi3_interface_init(&dev, BMI3_SPI_INTF);
+    rslt = bmi3_interface_init(&dev, BMI3_I2C_INTF);
     bmi3_error_codes_print_result("bmi3_interface_init", rslt);
 
     if (rslt == BMI323_OK)
@@ -71,7 +71,6 @@ int main(void)
         {
             /* Set feature configurations for orientation. */
             rslt = set_feature_config(&dev);
-            bmi3_error_codes_print_result("Set feature config", rslt);
 
             if (rslt == BMI323_OK)
             {

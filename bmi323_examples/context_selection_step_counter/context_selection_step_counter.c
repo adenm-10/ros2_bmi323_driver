@@ -1,5 +1,5 @@
 /**\
- * Copyright (c) 2023 Bosch Sensortec GmbH. All rights reserved.
+ * Copyright (c) 2024 Bosch Sensortec GmbH. All rights reserved.
  *
  * SPDX-License-Identifier: BSD-3-Clause
  **/
@@ -67,7 +67,6 @@ int main(void)
         {
             /* Set feature configurations for step counter interrupt. */
             rslt = set_feature_config(&dev);
-            bmi3_error_codes_print_result("Set feature config", rslt);
 
             if (rslt == BMI323_OK)
             {
@@ -176,7 +175,6 @@ static int8_t set_feature_config(struct bmi3_dev *dev)
             printf("step_duration_thres: %d\n", config[1].cfg.step_counter.step_duration_thres);
             printf("mean_crossing_pp_enabled: %d\n", config[1].cfg.step_counter.mean_crossing_pp_enabled);
             printf("mcr_threshold: %d\n", config[1].cfg.step_counter.mcr_threshold);
-            printf("sc_12_res: %d\n", config[1].cfg.step_counter.sc_12_res);
 
             if (rslt == BMI323_OK)
             {

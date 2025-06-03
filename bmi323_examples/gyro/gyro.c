@@ -1,5 +1,5 @@
 /**\
- * Copyright (c) 2023 Bosch Sensortec GmbH. All rights reserved.
+ * Copyright (c) 2024 Bosch Sensortec GmbH. All rights reserved.
  *
  * SPDX-License-Identifier: BSD-3-Clause
  **/
@@ -59,9 +59,6 @@ int main(void)
     /* Initialize the interrupt status of gyro. */
     uint16_t int_status = 0;
 
-    /* Structure to define gyro configuration. */
-    struct bmi3_sens_config config = { 0 };
-
     /* Function to select interface between SPI and I2C, according to that the device structure gets updated.
      * Interface reference is given as a parameter
      * For I2C : BMI3_I2C_INTF
@@ -83,16 +80,10 @@ int main(void)
 
             if (rslt == BMI323_OK)
             {
-                rslt = bmi323_get_sensor_config(&config, 1, &dev);
-                bmi3_error_codes_print_result("bmi323_get_sensor_config", rslt);
-            }
-
-            if (rslt == BMI323_OK)
-            {
                 /* Select gyro sensor. */
                 sensor_data.type = BMI323_GYRO;
 
-                printf("\nData set, Range, Gyr_Raw_X, Gyr_Raw_Y, Gyr_Raw_Z, Gyr_dps_X, Gyr_dps_Y, Gyr_dps_Z\n\n");
+                printf("\nData set, Gyr_Raw_X, Gyr_Raw_Y, Gyr_Raw_Z, Gyr_dps_X, Gyr_dps_Y, Gyr_dps_Z\n\n");
 
                 /* Loop to print gyro data when interrupt occurs. */
                 while (indx <= limit)
@@ -114,9 +105,8 @@ int main(void)
                         z = lsb_to_dps(sensor_data.sens_data.gyr.z, (float)2000, dev.resolution);
 
                         /* Print the data in dps. */
-                        printf("%d, %d, %d, %d, %d, %4.2f, %4.2f, %4.2f\n",
+                        printf("%d, %d, %d, %d, %4.2f, %4.2f, %4.2f\n",
                                indx,
-                               config.cfg.gyr.range,
                                sensor_data.sens_data.gyr.x,
                                sensor_data.sens_data.gyr.y,
                                sensor_data.sens_data.gyr.z,
@@ -184,13 +174,13 @@ static int8_t set_gyro_config(struct bmi3_dev *dev)
             config.cfg.gyr.gyr_mode = BMI3_GYR_MODE_NORMAL;
 
             /* Value    Name    Description
-             *  000     avg_1   No averaging; pass sample without filtering
-             *  001     avg_2   Averaging of 2 samples
-             *  010     avg_4   Averaging of 4 samples
-             *  011     avg_8   Averaging of 8 samples
-             *  100     avg_16  Averaging of 16 samples
-             *  101     avg_32  Averaging of 32 samples
-             *  110     avg_64  Averaging of 64 samples
+             *  0b000     avg_1   No averaging; pass sample without filtering
+             *  0b001     avg_2   Averaging of 2 samples
+             *  0b010     avg_4   Averaging of 4 samples
+             *  0b011     avg_8   Averaging of 8 samples
+             *  0b100     avg_16  Averaging of 16 samples
+             *  0b101     avg_32  Averaging of 32 samples
+             *  0b110     avg_64  Averaging of 64 samples
              */
             config.cfg.gyr.avg_num = BMI3_GYR_AVG1;
 

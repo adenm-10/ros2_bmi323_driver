@@ -1,5 +1,5 @@
 /**\
- * Copyright (c) 2023 Bosch Sensortec GmbH. All rights reserved.
+ * Copyright (c) 2024 Bosch Sensortec GmbH. All rights reserved.
  *
  * SPDX-License-Identifier: BSD-3-Clause
  **/
@@ -46,17 +46,7 @@ int main(void)
     /* Interrupt mapping structure. */
     struct bmi3_map_int map_int = { 0 };
 
-    /* Create an instance of sensor data structure. */
-    struct bmi3_sensor_data sensor_data[2] = { 0 };
-
-    uint8_t limit = 2;
-    uint8_t count = 0;
-
-    /* Select accel sensor. */
-    sensor_data[0].type = BMI323_ACCEL;
-
-    /* Select gyro sensor. */
-    sensor_data[1].type = BMI323_GYRO;
+    uint8_t flat_count = 0, sig_mot_count = 0;
 
     /* Function to select interface between SPI and I2C, according to that the device structure gets updated.
      * Interface reference is given as a parameter
@@ -76,7 +66,6 @@ int main(void)
         {
             /* Set feature configurations. */
             rslt = set_feature_config(&dev);
-            bmi3_error_codes_print_result("Set feature config", rslt);
 
             if (rslt == BMI323_OK)
             {
@@ -93,8 +82,6 @@ int main(void)
                     /* Select the feature and map the interrupt to pin BMI3_INT1 or BMI3_INT2 */
                     map_int.flat_out = BMI3_INT1;
                     map_int.sig_motion_out = BMI3_INT1;
-                    map_int.acc_drdy_int = BMI3_INT1;
-                    map_int.gyr_drdy_int = BMI3_INT1;
 
                     /* Map the feature interrupt. */
                     rslt = bmi323_map_interrupt(map_int, &dev);
@@ -121,35 +108,6 @@ int main(void)
                         rslt = bmi323_get_int1_status(&int_status, &dev);
                         bmi3_error_codes_print_result("Read interrupt status", rslt);
 
-                        /* To check the accel data ready interrupt status and print the status of x, y and z-axis.
-                         * */
-                        if (int_status & BMI3_INT_STATUS_ACC_DRDY)
-                        {
-                            /* Get accelerometer data for x, y and z-axis. */
-                            rslt = bmi323_get_sensor_data(&sensor_data[0], 1, &dev);
-                            bmi3_error_codes_print_result("Get sensor data", rslt);
-
-                            printf("Accel-x = %d\tAccel-y = %d\tAccel-z = %d\tSensor time %ld\n",
-                                   sensor_data[0].sens_data.acc.x,
-                                   sensor_data[0].sens_data.acc.y,
-                                   sensor_data[0].sens_data.acc.z,
-                                   (long int)sensor_data[0].sens_data.acc.sens_time);
-                        }
-
-                        /* To check the gyro data ready interrupt status and print the status of x, y and z-axis. */
-                        if (int_status & BMI3_INT_STATUS_GYR_DRDY)
-                        {
-                            /* Get gyro data for x, y and z-axis. */
-                            rslt = bmi323_get_sensor_data(&sensor_data[1], 1, &dev);
-                            bmi3_error_codes_print_result("Get sensor data", rslt);
-
-                            printf("Gyro-x = %d\tGyro-y = %d\tGyro-z = %d\tSensor time %ld\n",
-                                   sensor_data[1].sens_data.gyr.x,
-                                   sensor_data[1].sens_data.gyr.y,
-                                   sensor_data[1].sens_data.gyr.z,
-                                   (long int)sensor_data[1].sens_data.gyr.sens_time);
-                        }
-
                         /* To check the interrupt status of sig-motion. */
                         if (int_status & BMI3_INT_STATUS_SIG_MOTION)
                         {
@@ -159,7 +117,7 @@ int main(void)
                             printf("Alternate accel status %d\n", alt_status.alt_accel_status);
                             printf("Alternate gyro status %d\n", alt_status.alt_gyro_status);
 
-                            count++;
+                            sig_mot_count++;
                         }
 
                         /* Check the interrupt status of the flat */
@@ -170,9 +128,11 @@ int main(void)
                             rslt = bmi323_read_alternate_status(&alt_status, &dev);
                             printf("Alternate accel status %d\n", alt_status.alt_accel_status);
                             printf("Alternate gyro status %d\n", alt_status.alt_gyro_status);
+
+                            flat_count++;
                         }
 
-                        if (count == limit)
+                        if ((sig_mot_count > 0) && (flat_count > 0))
                         {
                             break;
                         }
@@ -223,11 +183,15 @@ static int8_t set_feature_config(struct bmi3_dev *dev)
         config[1].cfg.flat.theta = 9;
         config[1].cfg.flat.blocking = 3;
         config[1].cfg.flat.hold_time = 50;
+        config[1].cfg.flat.hysteresis = 8;
+        config[1].cfg.flat.slope_thres = 0xCD;
 
         /* Set sig-motion configuration settings */
         config[2].cfg.sig_motion.block_size = 200;
         config[2].cfg.sig_motion.peak_2_peak_max = 30;
         config[2].cfg.sig_motion.peak_2_peak_min = 30;
+        config[2].cfg.sig_motion.mcr_max = 0x11;
+        config[2].cfg.sig_motion.mcr_min = 0x11;
 
         /* Assign the features to user and alternate switch
          * NOTE: Any of one the feature (either flat or sig-motion) can be assigned to alternate configuration.

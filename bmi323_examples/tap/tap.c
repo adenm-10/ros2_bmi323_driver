@@ -1,5 +1,5 @@
 /**\
- * Copyright (c) 2023 Bosch Sensortec GmbH. All rights reserved.
+ * Copyright (c) 2024 Bosch Sensortec GmbH. All rights reserved.
  *
  * SPDX-License-Identifier: BSD-3-Clause
  **/
@@ -42,6 +42,9 @@ int main(void)
     /* Feature enable initialization. */
     struct bmi3_feature_enable feature = { 0 };
 
+    /* Loop variable to increment single tap, double tap and triple tap */
+    uint8_t s_tap = 0, d_tap = 0, t_tap = 0;
+
     /* Interrupt mapping structure. */
     struct bmi3_map_int map_int = { 0 };
 
@@ -63,7 +66,6 @@ int main(void)
         {
             /* Set feature configurations for tap interrupt. */
             rslt = set_feature_config(&dev);
-            bmi3_error_codes_print_result("Set feature config", rslt);
 
             if (rslt == BMI323_OK)
             {
@@ -100,19 +102,28 @@ int main(void)
                             if (data[0] & BMI3_TAP_DET_STATUS_SINGLE)
                             {
                                 printf("Single tap asserted\n");
+
+                                s_tap++;
                             }
 
                             if (data[0] & BMI3_TAP_DET_STATUS_DOUBLE)
                             {
                                 printf("Double tap asserted\n");
+
+                                d_tap++;
                             }
 
                             if (data[0] & BMI3_TAP_DET_STATUS_TRIPLE)
                             {
                                 printf("Triple tap asserted\n");
+
+                                t_tap++;
                             }
 
-                            break;
+                            if (s_tap > 0 && d_tap > 0 && t_tap > 0)
+                            {
+                                break;
+                            }
                         }
                     } while (rslt == BMI323_OK);
                 }
@@ -153,12 +164,48 @@ static int8_t set_feature_config(struct bmi3_dev *dev)
 
         /* Accelerometer sensing axis selection for tap detection.
          * Value    Name          Description
-         * 00    axis_x     Use x-axis for tap detection
-         * 01    axis_y     Use y-axis for tap detection
-         * 10    axis_z     Use z-axis for tap detection
-         * 11   reserved    Use z-axis for tap detection
+         * 0b00    axis_x     Use x-axis for tap detection
+         * 0b01    axis_y     Use y-axis for tap detection
+         * 0b10    axis_z     Use z-axis for tap detection
+         * 0b11   reserved    Use z-axis for tap detection
          */
         config[1].cfg.tap.axis_sel = 1;
+
+        /* Maximum duration between positive and negative peaks to tap */
+        config[1].cfg.tap.max_dur_between_peaks = 5;
+
+        /* Maximum duration from first tap within the second and/or third tap is expected to happen */
+        config[1].cfg.tap.max_gest_dur = 0x11;
+
+        /* Maximum number of threshold crossing expected around a tap */
+        config[1].cfg.tap.max_peaks_for_tap = 5;
+
+        /* Mimimum duration between two consecutive tap impact */
+        config[1].cfg.tap.min_quite_dur_between_taps = 7;
+
+        /* Mode for detection of tap gesture
+         * Value    Name          Description
+         * 0        Sensitive   Sensitive detection mode
+         * 1        Normal      Normal detection mode
+         * 2        Robust      Robust detection mode
+         */
+        config[1].cfg.tap.mode = 1;
+
+        /* Minimum quite duration between two gestures */
+        config[1].cfg.tap.quite_time_after_gest = 5;
+
+        /* Minimum threshold for peak resulting from the tap */
+        config[1].cfg.tap.tap_peak_thres = 0x2C;
+
+        /* Maximum duration for which tap impact is observed */
+        config[1].cfg.tap.tap_shock_settling_dur = 5;
+
+        /* Perform gesture confirmation with wait time set by maximum gesture duration
+         * Value    Name          Description
+         * 0        Disable     Report the gesture when detected
+         * 1        Enable      Report the gesture after confirmation
+         */
+        config[1].cfg.tap.wait_for_timeout = 1;
 
         /* Set new configurations. */
         rslt = bmi323_set_sensor_config(config, 2, dev);

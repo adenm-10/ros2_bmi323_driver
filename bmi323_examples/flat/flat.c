@@ -1,5 +1,5 @@
 /**\
- * Copyright (c) 2023 Bosch Sensortec GmbH. All rights reserved.
+ * Copyright (c) 2024 Bosch Sensortec GmbH. All rights reserved.
  *
  * SPDX-License-Identifier: BSD-3-Clause
  **/
@@ -61,7 +61,6 @@ int main(void)
         {
             /* Set feature configurations for flat interrupt. */
             rslt = set_feature_config(&dev);
-            bmi3_error_codes_print_result("Set feature config", rslt);
 
             if (rslt == BMI323_OK)
             {
@@ -137,16 +136,23 @@ static int8_t set_feature_config(struct bmi3_dev *dev)
 
         /* Blocking mode to prevent change of flat status during large movement of device.
          * Value    Name        Description
-         *  00     MODE_0   Blocking is disabled
-         *  01     MODE_1   Block if acceleration on any axis is greater than 1.5g
-         *  10     MODE_2   Block if acceleration on any axis is greater than 1.5g or slope is greater than half of
+         *  0b00     MODE_0   Blocking is disabled
+         *  0b01     MODE_1   Block if acceleration on any axis is greater than 1.5g
+         *  0b10     MODE_2   Block if acceleration on any axis is greater than 1.5g or slope is greater than half of
          *                  slope_thres
-         *  11     MODE_3   Block if acceleration on any axis is greater than 1.5g or slope is greater than slope_thres
+         *  0b11     MODE_3   Block if acceleration on any axis is greater than 1.5g or slope is greater than slope_thres
          */
         config[1].cfg.flat.blocking = 3;
 
         /* Minimum duration the device shall be in flat position for status to be asserted. Range = 0 to 255 */
         config[1].cfg.flat.hold_time = 50;
+
+        /* Angle of hysteresis for flat detection. Range = 0 to 255 */
+        config[1].cfg.flat.hysteresis = 9;
+
+        /* Minimum slope between consecutive acceleration samples to pervent the change of flat status during large
+         * movement. Range = 0 to 255 */
+        config[1].cfg.flat.slope_thres = 0xCD;
 
         /* Set new configurations. */
         rslt = bmi323_set_sensor_config(config, 2, dev);

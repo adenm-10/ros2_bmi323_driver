@@ -1,5 +1,5 @@
 /**\
- * Copyright (c) 2023 Bosch Sensortec GmbH. All rights reserved.
+ * Copyright (c) 2024 Bosch Sensortec GmbH. All rights reserved.
  *
  * SPDX-License-Identifier: BSD-3-Clause
  **/
@@ -14,12 +14,9 @@
 /******************************************************************************/
 /*!         Macros definition                                       */
 
-/*! Earth's gravity in m/s^2 */
-#define GRAVITY_EARTH  (9.80665f)
-
-#define ACCEL          UINT8_C(0x00)
-#define GYRO           UINT8_C(0x01)
-#define TEMPERATURE    UINT8_C(0x02)
+#define ACCEL        UINT8_C(0x00)
+#define GYRO         UINT8_C(0x01)
+#define TEMPERATURE  UINT8_C(0x02)
 
 /******************************************************************************/
 /*!         Structure Definition                                              */
@@ -35,21 +32,20 @@ struct bmi3_sens_config config[2];
  *
  *  @param[in] dev       : Structure instance of bmi3_dev.
  *
- *  @return Status of execution.
+ *  @return void.
  */
-static int8_t set_sensor_config(struct bmi3_dev *dev);
+static void set_sensor_config(struct bmi3_dev *dev);
 
-/*!
- *  @brief This internal function converts lsb to meter per second squared for 16 bit accelerometer for
- *  range 2G, 4G, 8G or 16G.
+/*! @brief This internal API converts raw sensor values(LSB) to G value
  *
- *  @param[in] val       : LSB from each axis.
- *  @param[in] g_range   : Gravity range.
- *  @param[in] bit_width : Resolution for accel.
+ *  @param[in] val        : Raw sensor value.
+ *  @param[in] g_range    : Accel Range selected (4G).
+ *  @param[in] bit_width  : Resolution of the sensor.
  *
- *  @return Accel values in meter per second squared.
+ *  @return Accel values in Gravity(G)
+ *
  */
-static float lsb_to_mps2(int16_t val, int8_t g_range, uint8_t bit_width);
+static float lsb_to_g(int16_t val, float g_range, uint8_t bit_width);
 
 /*!
  *  @brief This function converts lsb to degree per second for 16 bit gyro at
@@ -121,8 +117,7 @@ int main(void)
 
             if (rslt == BMI323_OK)
             {
-                rslt = set_sensor_config(&dev);
-                bmi3_error_codes_print_result("set_sensor_config", rslt);
+                set_sensor_config(&dev);
 
                 /* Enable i3c_sync feature */
                 feature.i3c_sync_en = BMI323_ENABLE;
@@ -161,7 +156,7 @@ int main(void)
                 printf("I3C accel, gyro and temperature data\n");
 
                 printf(
-                    "\nDATA_SET, i3c_acc_x, i3c_acc_y, i3c_acc_z, i3c_time, Gravity-x, Gravity-y, Gravity-z, i3c_gyro_x, i3c_gyro_y, i3c_gyro_z, DPS-x, DPS-y, DPS-z, i3c_temperature, i3c_sync_time, Temperature data(Degree Celcius)\n");
+                    "\nDATA_SET, i3c_acc_x, i3c_acc_y, i3c_acc_z, i3c_acc_time(LSB), acc_gravity_x, acc_gravity_y, acc_gravity_z, i3c_gyro_x, i3c_gyro_y, i3c_gyro_z, i3c_gyr_time(LSB), gyro_dps_x, gyro_dps_y, gyro_dps_z, i3c_temperature(LSB), i3c_sync_time(LSB), Temperature data(Degree Celcius)\n");
 
                 while (indx <= limit)
                 {
@@ -178,10 +173,10 @@ int main(void)
                         rslt = bmi323_get_sensor_data(sensor_data, 3, &dev);
                         bmi3_error_codes_print_result("bmi323_get_sensor_data", rslt);
 
-                        /* Converting lsb to meter per second squared for 16 bit accelerometer at 2G range. */
-                        acc_x = lsb_to_mps2((int16_t)sensor_data[ACCEL].sens_data.i3c_sync.sync_x, 2, dev.resolution);
-                        acc_y = lsb_to_mps2((int16_t)sensor_data[ACCEL].sens_data.i3c_sync.sync_y, 2, dev.resolution);
-                        acc_z = lsb_to_mps2((int16_t)sensor_data[ACCEL].sens_data.i3c_sync.sync_z, 2, dev.resolution);
+                        /* Converting lsb to gravity for 16 bit accelerometer at 2G range. */
+                        acc_x = lsb_to_g((int16_t)sensor_data[ACCEL].sens_data.i3c_sync.sync_x, 2.0f, dev.resolution);
+                        acc_y = lsb_to_g((int16_t)sensor_data[ACCEL].sens_data.i3c_sync.sync_y, 2.0f, dev.resolution);
+                        acc_z = lsb_to_g((int16_t)sensor_data[ACCEL].sens_data.i3c_sync.sync_z, 2.0f, dev.resolution);
 
                         /* Converting lsb to degree per second for 16 bit gyro at 2000dps range. */
                         gyr_x = lsb_to_dps((int16_t)sensor_data[GYRO].sens_data.i3c_sync.sync_x,
@@ -202,16 +197,16 @@ int main(void)
                         printf(
                             "%d, %d, %d, %d, %d, %4.2f, %4.2f, %4.2f, %d, %d, %d, %d, %4.2f, %4.2f, %4.2f, %d, %d, %f\t\n",
                             indx,
-                            sensor_data[ACCEL].sens_data.i3c_sync.sync_x,
-                            sensor_data[ACCEL].sens_data.i3c_sync.sync_y,
-                            sensor_data[ACCEL].sens_data.i3c_sync.sync_z,
+                            (int16_t)sensor_data[ACCEL].sens_data.i3c_sync.sync_x,
+                            (int16_t)sensor_data[ACCEL].sens_data.i3c_sync.sync_y,
+                            (int16_t)sensor_data[ACCEL].sens_data.i3c_sync.sync_z,
                             sensor_data[ACCEL].sens_data.i3c_sync.sync_time,
                             acc_x,
                             acc_y,
                             acc_z,
-                            sensor_data[GYRO].sens_data.i3c_sync.sync_x,
-                            sensor_data[GYRO].sens_data.i3c_sync.sync_y,
-                            sensor_data[GYRO].sens_data.i3c_sync.sync_z,
+                            (int16_t)sensor_data[GYRO].sens_data.i3c_sync.sync_x,
+                            (int16_t)sensor_data[GYRO].sens_data.i3c_sync.sync_y,
+                            (int16_t)sensor_data[GYRO].sens_data.i3c_sync.sync_z,
                             sensor_data[GYRO].sens_data.i3c_sync.sync_time,
                             gyr_x,
                             gyr_y,
@@ -235,7 +230,7 @@ int main(void)
 /*!
  * @brief This internal API is used to set configurations for accelerometer, gyroscope and FIFO.
  */
-static int8_t set_sensor_config(struct bmi3_dev *dev)
+static void set_sensor_config(struct bmi3_dev *dev)
 {
     int8_t rslt;
 
@@ -251,12 +246,14 @@ static int8_t set_sensor_config(struct bmi3_dev *dev)
     bmi3_error_codes_print_result("bmi323_get_sensor_config", rslt);
 
     /* Configure the accel and gyro settings */
+    config[ACCEL].cfg.acc.odr = BMI3_ACC_ODR_50HZ;
     config[ACCEL].cfg.acc.bwp = BMI3_ACC_BW_ODR_QUARTER;
     config[ACCEL].cfg.acc.range = BMI3_ACC_RANGE_2G;
     config[ACCEL].cfg.acc.acc_mode = BMI3_ACC_MODE_NORMAL;
 
+    config[GYRO].cfg.gyr.odr = BMI3_GYR_ODR_50HZ;
     config[GYRO].cfg.gyr.bwp = BMI3_GYR_BW_ODR_HALF;
-    config[GYRO].cfg.gyr.range = BMI3_GYR_RANGE_125DPS;
+    config[GYRO].cfg.gyr.range = BMI3_GYR_RANGE_2000DPS;
     config[GYRO].cfg.gyr.gyr_mode = BMI3_GYR_MODE_NORMAL;
 
     rslt = bmi323_set_sensor_config(config, 2, dev);
@@ -272,21 +269,18 @@ static int8_t set_sensor_config(struct bmi3_dev *dev)
     /* Map i3c sync interrupt to interrupt pin. */
     rslt = bmi323_map_interrupt(map_int, dev);
     bmi3_error_codes_print_result("bmi323_map_interrupt", rslt);
-
-    return rslt;
 }
 
 /*!
- * @brief This function converts lsb to meter per second squared for 16 bit accelerometer at
- * range 2G, 4G, 8G or 16G.
+ * @brief This internal API converts raw sensor values(LSB) to G value
  */
-static float lsb_to_mps2(int16_t val, int8_t g_range, uint8_t bit_width)
+static float lsb_to_g(int16_t val, float g_range, uint8_t bit_width)
 {
     double power = 2;
 
     float half_scale = (float)((pow((double)power, (double)bit_width) / 2.0f));
 
-    return (GRAVITY_EARTH * val * g_range) / half_scale;
+    return (val * g_range) / half_scale;
 }
 
 /*!

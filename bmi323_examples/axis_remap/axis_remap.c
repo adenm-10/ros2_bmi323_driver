@@ -1,5 +1,5 @@
 /**\
- * Copyright (c) 2023 Bosch Sensortec GmbH. All rights reserved.
+ * Copyright (c) 2024 Bosch Sensortec GmbH. All rights reserved.
  *
  * SPDX-License-Identifier: BSD-3-Clause
  **/
@@ -13,12 +13,6 @@
 #include "common.h"
 
 /******************************************************************************/
-/*!         Macros definition                                                 */
-
-/*! Earth's gravity in m/s^2 */
-#define GRAVITY_EARTH  (9.80665f)
-
-/******************************************************************************/
 /*!           Static Function Declaration                                     */
 
 /*!
@@ -30,17 +24,16 @@
  */
 static int8_t set_accel_config(struct bmi3_dev *dev);
 
-/*!
- *  @brief This internal function converts lsb to meter per second squared for 16 bit accelerometer for
- *  range 2G, 4G, 8G or 16G.
+/*! @brief This internal API converts raw sensor values(LSB) to G value
  *
- *  @param[in] val       : LSB from each axis.
- *  @param[in] g_range   : Gravity range.
- *  @param[in] bit_width : Resolution for accel.
+ *  @param[in] val        : Raw sensor value.
+ *  @param[in] g_range    : Accel Range selected (4G).
+ *  @param[in] bit_width  : Resolution of the sensor.
  *
- *  @return Accel values in meter per second squared.
+ *  @return Accel values in Gravity(G)
+ *
  */
-static float lsb_to_mps2(int16_t val, int8_t g_range, uint8_t bit_width);
+static float lsb_to_g(int16_t val, float g_range, uint8_t bit_width);
 
 /*!
  *  @brief This internal API is used to read the accel data before and after axis remap.
@@ -115,7 +108,7 @@ int main(void)
 
                     if (rslt == BMI323_OK)
                     {
-                        printf("\nACCEL DATA AFTER PERFORMING AXIS REMAP\n\n");
+                        printf("\nACCEL DATA AFTER PERFORMING AXIS REMAP\n");
 
                         rslt = axis_remap_accel_data(&sensor_data, &dev);
                         bmi3_error_codes_print_result("axis_remap_accel_data", rslt);
@@ -190,16 +183,15 @@ static int8_t set_accel_config(struct bmi3_dev *dev)
 }
 
 /*!
- * @brief This function converts lsb to meter per second squared for 16 bit accelerometer at
- * range 2G, 4G, 8G or 16G.
+ * @brief This internal API converts raw sensor values(LSB) to G value
  */
-static float lsb_to_mps2(int16_t val, int8_t g_range, uint8_t bit_width)
+static float lsb_to_g(int16_t val, float g_range, uint8_t bit_width)
 {
     double power = 2;
 
     float half_scale = (float)((pow((double)power, (double)bit_width) / 2.0f));
 
-    return (GRAVITY_EARTH * val * g_range) / half_scale;
+    return (val * g_range) / half_scale;
 }
 
 /*!
@@ -218,21 +210,9 @@ static int8_t axis_remap_accel_data(struct bmi3_sensor_data *sensor_data, struct
     /* Initialize the interrupt status of accel. */
     uint16_t int_status;
 
-    /* Structure to define accelerometer configuration. */
-    struct bmi3_sens_config config = { 0 };
-
     rslt = set_accel_config(dev);
-    bmi3_error_codes_print_result("set_accel_config", rslt);
 
-    if (rslt == BMI323_OK)
-    {
-        rslt = bmi323_get_sensor_config(&config, 1, dev);
-        bmi3_error_codes_print_result("bmi323_get_sensor_config", rslt);
-    }
-
-    printf("Accel data in LSB units and Gravity data at 2G range in m/s^2\n");
-
-    printf("\nData set, Range, Acc_Raw_X, Acc_Raw_Y, Acc_Raw_Z, Acc_ms2_X, Acc_ms2_Y, Acc_ms2_Z\n\n");
+    printf("\nData set, Acc_Raw_X, Acc_Raw_Y, Acc_Raw_Z, Acc_G_X, Acc_G_Y, Acc_G_Z\n\n");
 
     while ((rslt == BMI323_OK) && (indx <= limit))
     {
@@ -247,15 +227,14 @@ static int8_t axis_remap_accel_data(struct bmi3_sensor_data *sensor_data, struct
             rslt = bmi323_get_sensor_data(sensor_data, 1, dev);
             bmi3_error_codes_print_result("Get sensor data", rslt);
 
-            /* Converting lsb to meter per second squared for 16 bit accelerometer at 2G range. */
-            x = lsb_to_mps2(sensor_data->sens_data.acc.x, 2, dev->resolution);
-            y = lsb_to_mps2(sensor_data->sens_data.acc.y, 2, dev->resolution);
-            z = lsb_to_mps2(sensor_data->sens_data.acc.z, 2, dev->resolution);
+            /* Converting lsb to gravity for 16 bit accelerometer at 2G range. */
+            x = lsb_to_g(sensor_data->sens_data.acc.x, 2.0f, dev->resolution);
+            y = lsb_to_g(sensor_data->sens_data.acc.y, 2.0f, dev->resolution);
+            z = lsb_to_g(sensor_data->sens_data.acc.z, 2.0f, dev->resolution);
 
-            /* Print the data in m/s2. */
-            printf("%d, %d, %d, %d, %d, %4.2f, %4.2f, %4.2f\n",
+            /* Print the data in Gravity. */
+            printf("%d, %d, %d, %d, %4.2f, %4.2f, %4.2f\n",
                    indx,
-                   config.cfg.acc.range,
                    sensor_data->sens_data.acc.x,
                    sensor_data->sens_data.acc.y,
                    sensor_data->sens_data.acc.z,

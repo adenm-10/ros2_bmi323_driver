@@ -1,5 +1,5 @@
 /**\
- * Copyright (c) 2023 Bosch Sensortec GmbH. All rights reserved.
+ * Copyright (c) 2024 Bosch Sensortec GmbH. All rights reserved.
  *
  * SPDX-License-Identifier: BSD-3-Clause
  **/
@@ -61,7 +61,6 @@ int main(void)
         {
             /* Set feature configurations for any-motion. */
             rslt = set_feature_config(&dev);
-            bmi3_error_codes_print_result("Set feature config", rslt);
 
             if (rslt == BMI323_OK)
             {
@@ -143,6 +142,16 @@ static int8_t set_feature_config(struct bmi3_dev *dev)
          * Range = 0 to 8191.
          */
         config[1].cfg.any_motion.duration = 9;
+
+        /* Mode of the acceleration reference update. Range = 0 to 1.
+         * Value    Name    Description
+         *  0      OnEvent   On detection of the event
+         *  1      Always    On update of acceleration signal
+         */
+        config[1].cfg.any_motion.acc_ref_up = 1;
+
+        /* Wait time for clearing the event after slope is below threshold. Range = 0 to 7. */
+        config[1].cfg.any_motion.wait_time = 5;
 
         /* Set new configurations. */
         rslt = bmi323_set_sensor_config(config, 2, dev);

@@ -1,5 +1,5 @@
 /**\
- * Copyright (c) 2023 Bosch Sensortec GmbH. All rights reserved.
+ * Copyright (c) 2024 Bosch Sensortec GmbH. All rights reserved.
  *
  * SPDX-License-Identifier: BSD-3-Clause
  **/
@@ -61,7 +61,6 @@ int main(void)
         {
             /* Set feature configurations for sig-motion. */
             rslt = set_feature_config(&dev);
-            bmi3_error_codes_print_result("Set feature config", rslt);
 
             if (rslt == BMI323_OK)
             {
@@ -139,6 +138,12 @@ static int8_t set_feature_config(struct bmi3_dev *dev)
 
         /* Minimum value of the peak to peak acceleration magnitude. Range = 0 to 1023. */
         config[1].cfg.sig_motion.peak_2_peak_min = 30;
+
+        /* Maximum number of mean crossing per second in acceleration magnitude. Range = 0 to 62 */
+        config[1].cfg.sig_motion.mcr_max = 0x10;
+
+        /* Minimum number of mean crossing per second in acceleration magnitude. Range = 0 to 62 */
+        config[1].cfg.sig_motion.mcr_min = 0x10;
 
         /* Set new configurations. */
         rslt = bmi323_set_sensor_config(config, 2, dev);

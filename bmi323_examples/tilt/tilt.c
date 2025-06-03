@@ -1,5 +1,5 @@
 /**\
- * Copyright (c) 2023 Bosch Sensortec GmbH. All rights reserved.
+ * Copyright (c) 2024 Bosch Sensortec GmbH. All rights reserved.
  *
  * SPDX-License-Identifier: BSD-3-Clause
  **/
@@ -61,7 +61,6 @@ int main(void)
         {
             /* Set feature configurations for tilt interrupt. */
             rslt = set_feature_config(&dev);
-            bmi3_error_codes_print_result("Set feature config", rslt);
 
             if (rslt == BMI323_OK)
             {
@@ -138,6 +137,10 @@ static int8_t set_feature_config(struct bmi3_dev *dev)
         /* Minimum angle by which the device shall be tilted for event detection. Angle is computed as 256 *
          * cos(angle). Range = 0 to 255. */
         config[1].cfg.tilt.min_tilt_angle = 200;
+
+        /* Exponential smoothing coefficient for computing low-pass mean of acceleration vector.
+         * Range = 0 to 65535 */
+        config[1].cfg.tilt.beta_acc_mean = 0x00FF;
 
         /* Set new configurations. */
         rslt = bmi323_set_sensor_config(config, 2, dev);

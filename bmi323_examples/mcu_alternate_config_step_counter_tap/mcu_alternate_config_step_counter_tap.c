@@ -1,5 +1,5 @@
 /**\
- * Copyright (c) 2023 Bosch Sensortec GmbH. All rights reserved.
+ * Copyright (c) 2024 Bosch Sensortec GmbH. All rights reserved.
  *
  * SPDX-License-Identifier: BSD-3-Clause
  **/
@@ -14,7 +14,6 @@
 /*          Global variable declaration                              */
 /*********************************************************************/
 
-volatile uint8_t drdy_int_status = 0;
 volatile uint8_t feat_int_status = 0;
 
 struct bmi3_dev dev;
@@ -37,18 +36,9 @@ struct bmi3_sens_config config[7];
 static void init_bmi323(void);
 
 /*!
- * @brief This internal API is used to set the data ready interrupt status
- *
- *  @param[in] void
- *
- *  @return void
- */
-static void drdy_int_callback(uint32_t param1, uint32_t param2);
-
-/*!
  * @brief This internal API is used to set the feature interrupt status
  *
- *  @param[in] void
+ *  @param[in] param1, param2
  *
  *  @return void
  */
@@ -122,8 +112,73 @@ static void set_feature_config(void)
         /* Enable water-mark level for to get interrupt after 20 step counts */
         config[1].cfg.step_counter.watermark_level = 1;
 
-        /* Set tap configuration settings */
+        config[1].cfg.step_counter.activity_detection_factor = 4;
+        config[1].cfg.step_counter.activity_detection_thres = 2;
+        config[1].cfg.step_counter.env_coef_down = 0xD939;
+        config[1].cfg.step_counter.env_coef_up = 0xF1CC;
+        config[1].cfg.step_counter.env_min_dist_down = 0x85;
+        config[1].cfg.step_counter.env_min_dist_up = 0x131;
+        config[1].cfg.step_counter.filter_cascade_enabled = 1;
+        config[1].cfg.step_counter.mcr_threshold = 5;
+        config[1].cfg.step_counter.mean_crossing_pp_enabled = 0;
+        config[1].cfg.step_counter.mean_step_dur = 0xFD54;
+        config[1].cfg.step_counter.mean_val_decay = 0xEAC8;
+        config[1].cfg.step_counter.peak_duration_min_running = 0x0C;
+        config[1].cfg.step_counter.peak_duration_min_walking = 0x0C;
+        config[1].cfg.step_counter.reset_counter = 0;
+        config[1].cfg.step_counter.step_buffer_size = 5;
+        config[1].cfg.step_counter.step_counter_increment = 0x100;
+        config[1].cfg.step_counter.step_duration_max = 0x40;
+        config[1].cfg.step_counter.step_duration_pp_enabled = 1;
+        config[1].cfg.step_counter.step_duration_thres = 1;
+        config[1].cfg.step_counter.step_duration_window = 0x0A;
+
+        /* Set tap configuration settings. */
+
+        /* Accelerometer sensing axis selection for tap detection.
+         * Value    Name          Description
+         * 0b00    axis_x     Use x-axis for tap detection
+         * 0b01    axis_y     Use y-axis for tap detection
+         * 0b10    axis_z     Use z-axis for tap detection
+         * 0b11   reserved    Use z-axis for tap detection
+         */
         config[2].cfg.tap.axis_sel = 1;
+
+        /* Maximum duration between positive and negative peaks to tap */
+        config[2].cfg.tap.max_dur_between_peaks = 5;
+
+        /* Maximum duration from first tap within the second and/or third tap is expected to happen */
+        config[2].cfg.tap.max_gest_dur = 0x11;
+
+        /* Maximum number of threshold crossing expected around a tap */
+        config[2].cfg.tap.max_peaks_for_tap = 5;
+
+        /* Mimimum duration between two consecutive tap impact */
+        config[2].cfg.tap.min_quite_dur_between_taps = 7;
+
+        /* Mode for detection of tap gesture
+         * Value    Name          Description
+         * 0        Sensitive   Sensitive detection mode
+         * 1        Normal      Normal detection mode
+         * 2        Robust      Robust detection mode
+         */
+        config[2].cfg.tap.mode = 1;
+
+        /* Minimum quite duration between two gestures */
+        config[2].cfg.tap.quite_time_after_gest = 5;
+
+        /* Minimum threshold for peak resulting from the tap */
+        config[2].cfg.tap.tap_peak_thres = 0x2C;
+
+        /* Maximum duration for which tap impact is observed */
+        config[2].cfg.tap.tap_shock_settling_dur = 5;
+
+        /* Perform gesture confirmation with wait time set by maximum gesture duration
+         * Value    Name          Description
+         * 0        Disable     Report the gesture when detected
+         * 1        Enable      Report the gesture after confirmation
+         */
+        config[2].cfg.tap.wait_for_timeout = 1;
 
         /* Assign the features to user and alternate switch
          * NOTE: Any of one the feature (either step counter or tap) can be assigned to alternate configuration.
@@ -161,16 +216,6 @@ static void set_feature_config(void)
 }
 
 /*!
- * @brief This internal API is used to set the data ready interrupt status
- */
-static void drdy_int_callback(uint32_t param1, uint32_t param2)
-{
-    (void)param1;
-    (void)param2;
-    drdy_int_status = 1;
-}
-
-/*!
  * @brief This internal API is used to set the feature interrupt status
  */
 static void feat_int_callback(uint32_t param1, uint32_t param2)
@@ -190,7 +235,7 @@ int main(void)
     int8_t rslt;
 
     /* Create an instance of sensor data structure */
-    struct bmi3_sensor_data sensor_data[3] = { { 0 } };
+    struct bmi3_sensor_data sensor_data = { 0 };
 
     /* Interrupt mapping structure */
     struct bmi3_map_int map_int = { 0 };
@@ -198,14 +243,10 @@ int main(void)
     /* Structure to store alternate configuration status */
     struct bmi3_alt_status alt_status = { 0 };
 
-    /* Variable to get data ready interrupt status */
-    uint16_t drdy_int;
-
     /* Variable to get feature interrupt status */
     uint16_t feat_int;
 
-    uint8_t limit = 2;
-    uint8_t count = 0;
+    uint8_t tap_count = 0, sc_count = 0;
 
     /* Feature enable initialization. */
     struct bmi3_feature_enable feature = { 0 };
@@ -213,21 +254,15 @@ int main(void)
     /* Structure to define interrupt pin type, mode and configurations */
     struct bmi3_int_pin_config int_cfg = { 0 };
 
-    /* Select accel sensor. */
-    sensor_data[0].type = BMI323_ACCEL;
-
-    /* Select gyro sensor. */
-    sensor_data[1].type = BMI323_GYRO;
-
     /* Select step counter */
-    sensor_data[2].type = BMI323_STEP_COUNTER;
+    sensor_data.type = BMI323_STEP_COUNTER;
 
     /* Function to select interface between SPI and I2C, according to that the device structure gets updated.
      * Interface reference is given as a parameter
      * For I2C : BMI3_I2C_INTF
      * For SPI : BMI3_SPI_INTF
      */
-    rslt = bmi3_interface_init(&dev, BMI3_SPI_INTF);
+    rslt = bmi3_interface_init(&dev, BMI3_I2C_INTF);
     bmi3_error_codes_print_result("bmi3 interface init", rslt);
 
     /* After sensor init introduce 200 msec sleep */
@@ -270,8 +305,6 @@ int main(void)
     /* Select the feature and map the interrupt to pin BMI323_INT1 or BMI323_INT2 */
     map_int.step_counter_out = BMI3_INT2;
     map_int.tap_out = BMI3_INT2;
-    map_int.acc_drdy_int = BMI3_INT1;
-    map_int.gyr_drdy_int = BMI3_INT1;
 
     /* Map the feature interrupt. */
     rslt = bmi323_map_interrupt(map_int, &dev);
@@ -280,49 +313,10 @@ int main(void)
     printf("Move the board in steps for step counter interrupt which runs in alternate config\n");
     printf("Tap the board for tap interrupt which runs in user config\n");
 
-    coines_attach_interrupt(COINES_SHUTTLE_PIN_20, drdy_int_callback, COINES_PIN_INTERRUPT_FALLING_EDGE);
     coines_attach_interrupt(COINES_SHUTTLE_PIN_21, feat_int_callback, COINES_PIN_INTERRUPT_FALLING_EDGE);
 
     for (;;)
     {
-        if (drdy_int_status == 1)
-        {
-            /* Clear buffer */
-            drdy_int_status = 0;
-
-            /* Read the interrupt status from int 1 pin */
-            rslt = bmi323_get_int1_status(&drdy_int, &dev);
-            bmi3_error_codes_print_result("Read interrupt status", rslt);
-
-            /* To check the accel data ready interrupt status and print the status of x, y and z-axis. */
-            if (drdy_int & BMI3_INT_STATUS_ACC_DRDY)
-            {
-                /* Get accelerometer data for x, y and z-axis. */
-                rslt = bmi323_get_sensor_data(&sensor_data[0], 1, &dev);
-                bmi3_error_codes_print_result("bmi323_get_sensor_data", rslt);
-
-                printf("Accel-x = %d\tAccel-y = %d\tAccel-z = %d\tSensor time %ld\n",
-                       sensor_data[0].sens_data.acc.x,
-                       sensor_data[0].sens_data.acc.y,
-                       sensor_data[0].sens_data.acc.z,
-                       (long int)sensor_data[0].sens_data.acc.sens_time);
-            }
-
-            /* To check the gyro data ready interrupt status and print the status of x, y and z-axis. */
-            if (drdy_int & BMI3_INT_STATUS_GYR_DRDY)
-            {
-                /* Get gyro data for x, y and z-axis. */
-                rslt = bmi323_get_sensor_data(&sensor_data[1], 1, &dev);
-                bmi3_error_codes_print_result("Get sensor data", rslt);
-
-                printf("Gyro-x = %d\tGyro-y = %d\tGyro-z = %d\tSensor time %ld\n",
-                       sensor_data[1].sens_data.gyr.x,
-                       sensor_data[1].sens_data.gyr.y,
-                       sensor_data[1].sens_data.gyr.z,
-                       (long int)sensor_data[1].sens_data.gyr.sens_time);
-            }
-        }
-
         if (feat_int_status == 1)
         {
             feat_int_status = 0;
@@ -338,11 +332,11 @@ int main(void)
                 printf("\nStep detected\n");
 
                 /* Get step counter output */
-                rslt = bmi323_get_sensor_data(&sensor_data[2], 1, &dev);
+                rslt = bmi323_get_sensor_data(&sensor_data, 1, &dev);
                 bmi3_error_codes_print_result("Get sensor data", rslt);
 
                 /* Print the step counter output */
-                printf("No of steps counted  = %ld\n", (long int)sensor_data[2].sens_data.step_counter_output);
+                printf("No of steps counted  = %ld\n", (long int)sensor_data.sens_data.step_counter_output);
 
                 rslt = bmi323_read_alternate_status(&alt_status, &dev);
                 bmi3_error_codes_print_result("bmi323_read_alternate_status", rslt);
@@ -356,7 +350,7 @@ int main(void)
                 rslt = bmi323_set_sensor_config(&config[1], 1, &dev);
                 bmi3_error_codes_print_result("Set sensor config", rslt);
 
-                count++;
+                sc_count++;
             }
 
             /* Check the interrupt status of the tap */
@@ -367,10 +361,12 @@ int main(void)
                 rslt = bmi323_read_alternate_status(&alt_status, &dev);
                 printf("Alternate accel status %d\n", alt_status.alt_accel_status);
                 printf("Alternate gyro status %d\n", alt_status.alt_gyro_status);
+
+                tap_count++;
             }
         }
 
-        if (count == limit)
+        if ((tap_count > 0) && (sc_count > 0))
         {
             break;
         }

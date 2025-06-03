@@ -1,5 +1,5 @@
 /**\
- * Copyright (c) 2023 Bosch Sensortec GmbH. All rights reserved.
+ * Copyright (c) 2024 Bosch Sensortec GmbH. All rights reserved.
  *
  * SPDX-License-Identifier: BSD-3-Clause
  **/
@@ -36,7 +36,7 @@ int main(void)
      * For I2C : BMI3_I2C_INTF
      * For SPI : BMI3_SPI_INTF
      */
-    rslt = bmi3_interface_init(&dev, BMI3_SPI_INTF);
+    rslt = bmi3_interface_init(&dev, BMI3_I2C_INTF);
     bmi3_error_codes_print_result("bmi3_interface_init", rslt);
 
     if (rslt == BMI323_OK)
@@ -69,13 +69,17 @@ int main(void)
                 if ((rslt == BMI323_OK) && (st_result_status.self_test_rslt == BMI323_TRUE))
                 {
                     printf("Self-test is successfully completed \n");
+                    printf("Result of ST_result is %d\n", st_result_status.self_test_rslt);
                 }
 
                 if ((rslt == BMI323_OK) && (st_result_status.self_test_rslt == BMI323_FALSE))
                 {
                     printf("Self-test is not successfully completed\n");
 
-                    switch (st_result_status.self_test_err_rslt)
+                    printf("Result of ST_result is %d\n", st_result_status.self_test_rslt);
+                    printf("Result of self-test error is ");
+
+                    switch (st_result_status.self_test_err_status)
                     {
                         case BMI3_SC_ST_ABORTED_MASK:
                             printf("SC_ST_ABORTED\n");
@@ -101,8 +105,6 @@ int main(void)
                 printf("Result of gyr_y_axis is %d\n", st_result_status.gyr_sens_y_ok);
                 printf("Result of gyr_z_axis is %d\n", st_result_status.gyr_sens_z_ok);
                 printf("Result of gyr_drive_ok is %d\n", st_result_status.gyr_drive_ok);
-                printf("Result of self-test error is %d\n", st_result_status.self_test_err_rslt);
-                printf("Result of ST_result is %d\n", st_result_status.self_test_rslt);
             }
         }
     }

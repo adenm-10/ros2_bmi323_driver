@@ -1,5 +1,5 @@
 /**\
- * Copyright (c) 2023 Bosch Sensortec GmbH. All rights reserved.
+ * Copyright (c) 2024 Bosch Sensortec GmbH. All rights reserved.
  *
  * SPDX-License-Identifier: BSD-3-Clause
  **/
@@ -123,7 +123,7 @@ int main(void)
      * For I2C : BMI3_I2C_INTF
      * For SPI : BMI3_SPI_INTF
      */
-    rslt = bmi3_interface_init(&dev, BMI3_SPI_INTF);
+    rslt = bmi3_interface_init(&dev, BMI3_I2C_INTF);
     bmi3_error_codes_print_result("bmi3_interface_init", rslt);
 
     printf("Functional test for accel foc start..\n\n");
@@ -603,7 +603,7 @@ static int8_t verify_accel_foc_data(uint8_t range,
     {
         rslt = accel_foc_report(avg_accel_foc_data.y, reference, foc_sign, min_val, max_val);
 
-        printf("Range : %d  Avg_FOC-X : %d   Reference : %d   Min_Value : %d  Max_Value : %d\n",
+        printf("Range : %d  Avg_FOC-Y : %d   Reference : %d   Min_Value : %d  Max_Value : %d\n",
                range,
                avg_accel_foc_data.y,
                reference,
@@ -614,7 +614,7 @@ static int8_t verify_accel_foc_data(uint8_t range,
     {
         rslt = accel_foc_report(avg_accel_foc_data.z, reference, foc_sign, min_val, max_val);
 
-        printf("Range : %d  Avg_FOC-X : %d   Reference : %d   Min_Value : %d  Max_Value : %d\n",
+        printf("Range : %d  Avg_FOC-Z : %d   Reference : %d   Min_Value : %d  Max_Value : %d\n",
                range,
                avg_accel_foc_data.z,
                reference,
@@ -644,7 +644,7 @@ static int8_t verify_accel_foc_data(uint8_t range,
                                 (int16_t)(min_val * (-1)),
                                 (int16_t)(max_val * (-1)));
 
-        printf("Range : %d  Avg_FOC-X : %d   Reference : %d   Min_Value : %d  Max_Value : %d\n",
+        printf("Range : %d  Avg_FOC-Y : %d   Reference : %d   Min_Value : %d  Max_Value : %d\n",
                range,
                avg_accel_foc_data.y,
                (reference * (-1)),
@@ -659,7 +659,7 @@ static int8_t verify_accel_foc_data(uint8_t range,
                                 (int16_t)(min_val * (-1)),
                                 (int16_t)(max_val * (-1)));
 
-        printf("Range : %d  Avg_FOC-X : %d   Reference : %d   Min_Value : %d  Max_Value : %d\n",
+        printf("Range : %d  Avg_FOC-Z : %d   Reference : %d   Min_Value : %d  Max_Value : %d\n",
                range,
                avg_accel_foc_data.z,
                (reference * (-1)),
@@ -734,9 +734,6 @@ static int8_t perform_foc_range_test(uint8_t range, struct bmi3_accel_foc_g_valu
     /* Perform accelerometer FOC */
     rslt = bmi323_perform_accel_foc(&g_value_foc, bmi3_dev);
     bmi3_error_codes_print_result("bmi323_perform_accel_foc", rslt);
-
-    /* Provide delay after performing FOC */
-    bmi3_dev->delay_us(40000, bmi3_dev->intf_ptr);
 
     printf("\n\n# After FOC\n");
     rslt = verify_accel_foc_data(range, reference, matched_axis, g_value_foc.sign, bmi3_dev);

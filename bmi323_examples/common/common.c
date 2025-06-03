@@ -1,5 +1,5 @@
 /**
- * Copyright (C) 2023 Bosch Sensortec GmbH. All rights reserved.
+ * Copyright (c) 2024 Bosch Sensortec GmbH. All rights reserved.
  *
  * SPDX-License-Identifier: BSD-3-Clause
  */
@@ -228,7 +228,7 @@ int8_t bmi3_interface_init(struct bmi3_dev *dev, int8_t intf)
         /* Bus configuration : I2C */
         if (intf == BMI3_I2C_INTF)
         {
-            printf("I2C Interface\n");
+            printf("Interface: I2C\n");
             dev_addr = BMI3_ADDR_I2C_PRIM;
             dev->read = bmi3_i2c_read;
             dev->write = bmi3_i2c_write;
@@ -242,7 +242,7 @@ int8_t bmi3_interface_init(struct bmi3_dev *dev, int8_t intf)
         /* Bus configuration : SPI */
         else if (intf == BMI3_SPI_INTF)
         {
-            printf("SPI Interface\n");
+            printf("Interface: SPI\n");
             dev_addr = COINES_MINI_SHUTTLE_PIN_2_1;
             dev->read = bmi3_spi_read;
             dev->write = bmi3_spi_write;

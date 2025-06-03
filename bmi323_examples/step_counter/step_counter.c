@@ -1,5 +1,5 @@
 /**\
- * Copyright (c) 2023 Bosch Sensortec GmbH. All rights reserved.
+ * Copyright (c) 2024 Bosch Sensortec GmbH. All rights reserved.
  *
  * SPDX-License-Identifier: BSD-3-Clause
  **/
@@ -67,7 +67,6 @@ int main(void)
         {
             /* Set feature configurations for step counter interrupt. */
             rslt = set_feature_config(&dev);
-            bmi3_error_codes_print_result("Set feature config", rslt);
 
             if (rslt == BMI323_OK)
             {
@@ -146,6 +145,27 @@ static int8_t set_feature_config(struct bmi3_dev *dev)
 
         /* Enable water-mark level for to get interrupt after 20 step counts. */
         config[1].cfg.step_counter.watermark_level = 1;
+
+        config[1].cfg.step_counter.activity_detection_factor = 4;
+        config[1].cfg.step_counter.activity_detection_thres = 2;
+        config[1].cfg.step_counter.env_coef_down = 0xD939;
+        config[1].cfg.step_counter.env_coef_up = 0xF1CC;
+        config[1].cfg.step_counter.env_min_dist_down = 0x85;
+        config[1].cfg.step_counter.env_min_dist_up = 0x131;
+        config[1].cfg.step_counter.filter_cascade_enabled = 1;
+        config[1].cfg.step_counter.mcr_threshold = 5;
+        config[1].cfg.step_counter.mean_crossing_pp_enabled = 0;
+        config[1].cfg.step_counter.mean_step_dur = 0xFD54;
+        config[1].cfg.step_counter.mean_val_decay = 0xEAC8;
+        config[1].cfg.step_counter.peak_duration_min_running = 0x0C;
+        config[1].cfg.step_counter.peak_duration_min_walking = 0x0C;
+        config[1].cfg.step_counter.reset_counter = 0;
+        config[1].cfg.step_counter.step_buffer_size = 5;
+        config[1].cfg.step_counter.step_counter_increment = 0x100;
+        config[1].cfg.step_counter.step_duration_max = 0x40;
+        config[1].cfg.step_counter.step_duration_pp_enabled = 1;
+        config[1].cfg.step_counter.step_duration_thres = 1;
+        config[1].cfg.step_counter.step_duration_window = 0x0A;
 
         /* Set new configurations. */
         rslt = bmi323_set_sensor_config(config, 2, dev);

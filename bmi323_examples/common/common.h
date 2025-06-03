@@ -1,5 +1,5 @@
 /**
- * Copyright (C) 2023 Bosch Sensortec GmbH. All rights reserved.
+ * Copyright (c) 2024 Bosch Sensortec GmbH. All rights reserved.
  *
  * SPDX-License-Identifier: BSD-3-Clause
  */
@@ -14,11 +14,13 @@ extern "C" {
 
 #include "bmi3.h"
 
+/******************************************************************************/
+/*!                       Macro definitions                                   */
+
 /*! Enum to string converter*/
 #ifndef enum_to_string
 #define enum_to_string(a)  #a
 #endif
-
 
 /******************************************************************************/
 /*!               User interface functions                                    */
